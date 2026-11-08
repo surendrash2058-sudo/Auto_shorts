@@ -42,6 +42,7 @@ jobs:
           PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
           PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
           PRIVACY: public
+          VISUALS: auto
         run: python auto_shorts.py --auto
 
       - name: Persist completed topic history
