@@ -1011,23 +1011,91 @@ def parse_youtube_titles(data):
 
 
 def find_trending(days=7, n=15):
-    """Titles of the most-viewed 'what if' Shorts-length videos from the last few days."""
+    """Rank recent What If? videos by view velocity and engagement over a rolling window."""
     key = os.environ.get("YOUTUBE_API_KEY")
     if not key:
         print("No YOUTUBE_API_KEY: skipping trend search.")
         return []
+
     after = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%SZ")
-    q = urllib.parse.urlencode({"part": "snippet", "type": "video", "q": "what if", "order": "viewCount",
-                                "publishedAfter": after, "videoDuration": "short",
-                                "relevanceLanguage": "en", "maxResults": n, "key": key})
+    searches = [
+        '"what if" science',
+        '"what would happen if"',
+        '"what if" earth OR space OR sun',
+    ]
+    found = {}
+
     try:
-        titles = parse_youtube_titles(http_json("https://www.googleapis.com/youtube/v3/search?" + q))
+        for term in searches:
+            params = {
+                "part": "snippet", "type": "video", "q": term,
+                "order": "viewCount", "publishedAfter": after,
+                "videoDuration": "short", "relevanceLanguage": "en",
+                "maxResults": min(n, 25), "key": key,
+            }
+            data = http_json(
+                "https://www.googleapis.com/youtube/v3/search?" + urllib.parse.urlencode(params)
+            )
+            for item in data.get("items", []):
+                video_id = item.get("id", {}).get("videoId")
+                if not video_id:
+                    continue
+                snippet = item.get("snippet", {})
+                found[video_id] = {
+                    "id": video_id,
+                    "title": html.unescape(snippet.get("title", "")),
+                    "published": snippet.get("publishedAt", ""),
+                    "channel": html.unescape(snippet.get("channelTitle", "")),
+                }
+
+        ids = list(found)
+        stats_by_id = {}
+        for offset in range(0, len(ids), 50):
+            batch = ids[offset:offset + 50]
+            stats = http_json(
+                "https://www.googleapis.com/youtube/v3/videos?" +
+                urllib.parse.urlencode({
+                    "part": "statistics", "id": ",".join(batch), "key": key
+                })
+            )
+            for video in stats.get("items", []):
+                stats_by_id[video["id"]] = video.get("statistics", {})
+
+        now = datetime.now(timezone.utc)
+        ranked = []
+        for video_id, item in found.items():
+            try:
+                published = datetime.fromisoformat(item["published"].replace("Z", "+00:00"))
+            except (TypeError, ValueError):
+                continue
+            age_hours = max((now - published).total_seconds() / 3600, 1.0)
+            stats = stats_by_id.get(video_id, {})
+            views = int(stats.get("viewCount", 0))
+            likes = int(stats.get("likeCount", 0))
+            comments = int(stats.get("commentCount", 0))
+            velocity = views / age_hours
+            engagement = (likes + comments) / max(views, 1)
+            score = math.log1p(velocity) + min(engagement, 0.20) * 8
+            item.update({
+                "views": views, "likes": likes, "comments": comments,
+                "age_hours": age_hours, "views_per_hour": velocity,
+                "score": score,
+            })
+            ranked.append(item)
+
+        ranked.sort(key=lambda x: x["score"], reverse=True)
+        result = [
+            (f'{v["title"]} | {v["views"]:,} views in {v["age_hours"]:.1f}h '
+             f'({v["views_per_hour"]:.1f} views/hour), '
+             f'{v["likes"]:,} likes, channel: {v["channel"]}, '
+             f'https://youtube.com/watch?v={v["id"]}')
+            for v in ranked[:n]
+        ]
+        print(f"Found {len(result)} recent What If? trend candidates from the last {days} days.")
+        return result
     except Exception as e:
         print("Trend search failed:", e)
         return []
-    print(f"Found {len(titles)} trending titles.")
-    return titles
-
 
 def parse_topics(text):
     """Turn the model's reply into a clean list of {title, script, keywords}."""
