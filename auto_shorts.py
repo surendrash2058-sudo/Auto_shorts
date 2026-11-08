@@ -1518,7 +1518,7 @@ def render_with_scene_videos(title, words, mp3_path, mp4_path, clips, scene_text
     input_index = 0
     for i, clip in enumerate(clips):
         if clip:
-            decode_cmd += ["-i", clip]
+            decode_cmd += ["-stream_loop", "-1", "-i", clip]
         elif scene_imgs and i < len(scene_imgs) and scene_imgs[i] is not None:
             image_path = OUT / f"{mp4_path.stem}_fallback_scene{i}.jpg"
             scene_imgs[i].save(image_path, quality=92)
