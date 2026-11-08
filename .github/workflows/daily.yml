@@ -57,6 +57,7 @@ jobs:
           git add topics.json
           if ! git diff --cached --quiet; then
             git commit -m "Record generated What If topic"
+            git pull --rebase origin main
             git push
           fi
 
