@@ -1,0 +1,6 @@
+edge-tts
+pillow
+google-api-python-client
+google-auth-oauthlib
+anthropic
+numpy
