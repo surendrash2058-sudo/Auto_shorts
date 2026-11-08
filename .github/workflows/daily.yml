@@ -1,0 +1,54 @@
+name: Daily What-If Short
+
+on:
+  workflow_dispatch:
+  schedule:
+    # 09:00 UTC = 18:00 Korea time
+    - cron: "0 9 * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: daily-what-if-short
+  cancel-in-progress: false
+
+jobs:
+  generate-and-upload:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install FFmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+
+      - name: Generate and upload one video
+        env:
+          YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+          YOUTUBE_TOKEN_JSON: ${{ secrets.YOUTUBE_TOKEN_JSON }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+          PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
+          PRIVACY: private
+        run: python auto_shorts.py --auto
+
+      - name: Upload generated video as workflow artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: auto-shorts-output
+          path: output/
+          if-no-files-found: ignore
+          retention-days: 7
