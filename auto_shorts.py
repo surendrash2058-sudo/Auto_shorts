@@ -1680,7 +1680,11 @@ def main():
           "real pictures (3D/animation where none found)" if scene_imgs else "stock video" if clip
           else "3D renders" if is3d else "built-in animations" if scene_anims else "stars background")
     if scene_videos:
-        render_with_scene_videos(todo["title"], words, mp3, mp4, scene_videos, scene_texts, scene_imgs)
+        try:
+            render_with_scene_videos(todo["title"], words, mp3, mp4, scene_videos, scene_texts, scene_imgs)
+        except Exception as e:
+            print("Scene-footage renderer failed; switching to safe scene-image renderer:", e)
+            render(todo["title"], words, mp3, mp4, clip, scene_imgs, scene_texts, scene_anims)
     else:
         render(todo["title"], words, mp3, mp4, clip, scene_imgs, scene_texts, scene_anims)
     print("Video ready:", mp4)
