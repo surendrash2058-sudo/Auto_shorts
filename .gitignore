@@ -5,3 +5,5 @@ output/
 logs/
 __pycache__/
 .venv/
+token.json
+client_secret.json
