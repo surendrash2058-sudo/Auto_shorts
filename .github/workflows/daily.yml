@@ -3,8 +3,8 @@ name: Daily What-If Short
 on:
   workflow_dispatch:
   schedule:
-    # 09:00 UTC = 18:00 Korea time
-    - cron: "0 9 * * *"
+    # 23:00 UTC: US evening window (6 PM Eastern / 3 PM Pacific in standard time)
+    - cron: "0 23 * * *"
 
 permissions:
   contents: write
