@@ -37,3 +37,16 @@ To add a new 3D look: write draw_xxx + a branch in render3d + a rule in KIND3D /
 - New API projects can only upload as **private** until Google audits the project.
 - Without ANTHROPIC_API_KEY the system uses the 20 starter topics in topics.json (about 20 days) and cannot write new ones or use trends. Add the key later to unlock trending-topic scripts.
 - Not tested with real internet: trend search, Pexels download, voice, upload, GitHub Action.
+
+
+## Automated schedule
+
+The GitHub Actions workflow in `.github/workflows/daily.yml` runs daily at 18:00 Korea time and keeps uploads **private** by default. You can also run it manually from the Actions tab.
+
+Add these GitHub Actions secrets:
+- `YOUTUBE_API_KEY`
+- `YOUTUBE_TOKEN_JSON`
+- `ANTHROPIC_API_KEY`
+- Optional: `PEXELS_API_KEY`, `PIXABAY_API_KEY`
+
+Do not change `PRIVACY=private` until you have reviewed several generated videos and confirmed the OAuth account, science, visuals, audio rights, and channel settings. GitHub-hosted runners are temporary: the local `topics.json` queue and generated files do not persist between runs unless saved as artifacts or committed to durable storage. A later milestone should move topic history and outputs to persistent storage.
