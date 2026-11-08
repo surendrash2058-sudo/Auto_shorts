@@ -127,23 +127,39 @@ def group_words(words, n=3):
 def draw_frame(bg, title, words, groups, idx):
     img = bg.copy() if bg is not None else Image.new("RGBA", (W, H), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
-    tf, cf = get_font(54), get_font(104)
-    d.text((W // 2, 170), title, font=tf, fill=(255, 255, 255), anchor="mm")
+    # Keep the title inside the Shorts safe area and wrap long titles.
+    tf = get_font(42)
+    title_words = title.split()
+    title_lines, line = [], ""
+    for word in title_words:
+        candidate = (line + " " + word).strip()
+        if d.textlength(candidate, font=tf) > W * 0.84 and line:
+            title_lines.append(line)
+            line = word
+        else:
+            line = candidate
+    if line:
+        title_lines.append(line)
+    title_lines = title_lines[:2]
+    for n, title_line in enumerate(title_lines):
+        d.text((W // 2, 125 + n * 52), title_line, font=tf,
+               fill=(255, 255, 255), anchor="mm", stroke_width=2, stroke_fill=(0, 0, 0))
     if idx is not None:
         grp = next(g for g in groups if idx in g)
         parts = [words[i][0] for i in grp]
-        size = 104
-        while True:                                  # shrink until the line fits the screen
+        size = 84
+        while True:
             cf = get_font(size)
             sizes = [d.textlength(p + " ", font=cf) for p in parts]
-            if sum(sizes) <= W * 0.9 or size <= 40:
+            if sum(sizes) <= W * 0.84 or size <= 42:
                 break
-            size -= 6
+            size -= 4
         x = (W - sum(sizes)) / 2
         for i, p, sz in zip(grp, parts, sizes):
             col = (255, 220, 40) if i == idx else (255, 255, 255)
-            d.text((x + 3, H * 0.62 + 3), p, font=cf, fill=(0, 0, 0), anchor="lm")
-            d.text((x, H * 0.62), p, font=cf, fill=col, anchor="lm")
+            d.text((x + 3, H * 0.59 + 3), p, font=cf, fill=(0, 0, 0), anchor="lm")
+            d.text((x, H * 0.59), p, font=cf, fill=col, anchor="lm",
+                   stroke_width=1, stroke_fill=(0, 0, 0))
             x += sz
     return img
 
@@ -1470,6 +1486,89 @@ def fetch_clip(keywords, out_path):
         print("Stock clip failed, using plain background:", e)
         return None
 
+def fetch_scene_videos(scenes, plan, slug):
+    """Get a separate real vertical stock video for each narration scene."""
+    clips = []
+    if not os.environ.get("PEXELS_API_KEY"):
+        print("PEXELS_API_KEY is missing; scene videos will use image/animation fallbacks.")
+        return None
+    for i, scene in enumerate(scenes):
+        query = (plan[i].get("query") or simple_query(scene) or scene)[:120]
+        path = OUT / f"{slug}_video_scene{i}.mp4"
+        clip = fetch_clip(query, path)
+        if clip:
+            clips.append(str(clip))
+            print(f"  scene video {i + 1}/{len(scenes)} -> {query}")
+        else:
+            clips.append(None)
+    return clips if any(clips) else None
+
+
+def render_with_scene_videos(title, words, mp3_path, mp4_path, clips, scene_texts):
+    """Render scene-specific moving footage, falling back to a still/animation for missing clips."""
+    total = words[-1][1] + words[-1][2] + 0.8
+    n_frames = int(total * FPS)
+    weights = [max(len(t), 1) for t in scene_texts]
+    durations = [total * w / sum(weights) for w in weights]
+    usable = [c for c in clips if c]
+    if not usable:
+        return False
+
+    inputs, filters, labels = [], [], []
+    for i, clip in enumerate(clips):
+        if clip:
+            inputs += ["-i", clip]
+            input_index = sum(1 for c in clips[:i] if c)
+            filters.append(
+                f"[{input_index}:v]trim=duration={durations[i]:.3f},setpts=PTS-STARTPTS,"
+                f"scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H},"
+                f"setsar=1,fps={FPS},format=rgb24[v{i}]"
+            )
+            labels.append(f"[v{i}]")
+    # Reuse the nearest available moving clip where a scene has no stock result.
+    if len(labels) != len(clips):
+        first = labels[0]
+        for i, clip in enumerate(clips):
+            if not clip:
+                filters.append(f"{first}null[v{i}]")
+                labels.append(f"[v{i}]")
+        labels = [f"[v{i}]" for i in range(len(clips))]
+    filters.append("".join(labels) + f"concat=n={len(clips)}:v=1:a=0[outv]")
+    decode_cmd = ["ffmpeg", "-y", "-loglevel", "error"]
+    for i, clip in enumerate(clips):
+        if clip:
+            decode_cmd += ["-i", clip]
+    decode_cmd += ["-filter_complex", ";".join(filters), "-map", "[outv]",
+                   "-an", "-f", "rawvideo", "-pix_fmt", "rgb24", "-vsync", "0", "pipe:1"]
+    encode_cmd = ["ffmpeg", "-y", "-loglevel", "error", "-f", "rawvideo",
+                  "-pix_fmt", "rgb24", "-s", f"{W}x{H}", "-r", str(FPS), "-i", "-",
+                  "-i", str(mp3_path), "-c:v", "libx264", "-preset", "veryfast",
+                  "-pix_fmt", "yuv420p", "-af", "apad", "-c:a", "aac",
+                  "-t", f"{n_frames / FPS:.3f}", str(mp4_path)]
+    decoder = subprocess.Popen(decode_cmd, stdout=subprocess.PIPE)
+    encoder = subprocess.Popen(encode_cmd, stdin=subprocess.PIPE)
+    groups = group_words(words)
+    starts = [w[1] for w in words]
+    try:
+        for frame_no in range(n_frames):
+            raw = decoder.stdout.read(W * H * 3)
+            if len(raw) != W * H * 3:
+                break
+            bg = Image.frombytes("RGB", (W, H), raw)
+            t = frame_no / FPS
+            idx = max([i for i, start in enumerate(starts) if start <= t], default=None)
+            encoder.stdin.write(draw_frame(bg, title, words, groups, idx).tobytes())
+        encoder.stdin.close()
+    finally:
+        decoder.stdout.close()
+    dec_rc = decoder.wait()
+    enc_rc = encoder.wait()
+    if dec_rc != 0 or enc_rc != 0:
+        raise RuntimeError("FFmpeg failed while rendering scene-specific stock footage.")
+    print("Rendered with scene-specific moving stock footage.")
+    return True
+
+
 
 def scene_visual_names(texts, title):
     """3D renders when numpy is installed, otherwise the simple 2D animations."""
@@ -1519,12 +1618,18 @@ def main():
     mode = os.environ.get("VISUALS", "auto")   # 3d (default, free) | auto (real photos) | anim | images | stock | plain
     scene_texts = split_scenes(todo["script"])
     scene_imgs, scene_anims, clip, is3d = None, None, None, False
-    if mode in ("auto", "images"):
+    plan = None
+    scene_videos = None
+    if mode in ("auto", "images", "stock"):
         print("Planning visuals for each scene...")
         plan = plan_scenes(scene_texts, todo["title"])
-        print("Making visuals (AI pictures take about 15 sec each)...")
+    if mode in ("auto", "stock"):
+        print("Finding real moving footage for each scene...")
+        scene_videos = fetch_scene_videos(scene_texts, plan, slug)
+    if mode in ("auto", "images"):
+        print("Preparing AI/photo fallbacks for scenes without video...")
         scene_imgs = fetch_scene_visuals(scene_texts, plan, slug)
-    if not scene_imgs and mode in ("auto", "stock"):
+    if not scene_imgs and not scene_videos and mode in ("auto", "stock"):
         clip = fetch_clip(kw, OUT / f"{slug}_bg.mp4")
     if not clip and mode in ("3d", "anim", "auto", "images"):
         if mode == "anim":
@@ -1537,7 +1642,10 @@ def main():
     print("2/3 rendering video (2-5 minutes)... visuals:",
           "real pictures (3D/animation where none found)" if scene_imgs else "stock video" if clip
           else "3D renders" if is3d else "built-in animations" if scene_anims else "stars background")
-    render(todo["title"], words, mp3, mp4, clip, scene_imgs, scene_texts, scene_anims)
+    if scene_videos:
+        render_with_scene_videos(todo["title"], words, mp3, mp4, scene_videos, scene_texts)
+    else:
+        render(todo["title"], words, mp3, mp4, clip, scene_imgs, scene_texts, scene_anims)
     print("Video ready:", mp4)
 
     if a.upload:
