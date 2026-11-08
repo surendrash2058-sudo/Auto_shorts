@@ -55,22 +55,41 @@ def get_font(size):
 
 # ---------- 1. voice + word timings ----------
 async def make_voice(text, mp3_path):
+    """Generate speech with retries and alternate Microsoft Edge voices."""
     import edge_tts
-    try:
-        comm = edge_tts.Communicate(text, VOICE, boundary="WordBoundary")
-    except TypeError:                      # older edge-tts versions
-        comm = edge_tts.Communicate(text, VOICE)
-    words = []
-    with open(mp3_path, "wb") as f:
-        async for chunk in comm.stream():
-            if chunk["type"] == "audio":
-                f.write(chunk["data"])
-            elif chunk["type"] == "WordBoundary":
-                words.append((chunk["text"], chunk["offset"] / 1e7,
-                              chunk["duration"] / 1e7))
-    if not words:
-        raise RuntimeError("No word timings received. Update: pip install -U edge-tts")
-    return words
+
+    voices = [VOICE, "en-US-AriaNeural", "en-GB-RyanNeural"]
+    last_error = None
+    for attempt, voice in enumerate(voices, start=1):
+        words = []
+        try:
+            try:
+                comm = edge_tts.Communicate(text, voice, boundary="WordBoundary")
+            except TypeError:                  # older edge-tts versions
+                comm = edge_tts.Communicate(text, voice)
+            with open(mp3_path, "wb") as audio_file:
+                async for chunk in comm.stream():
+                    if chunk["type"] == "audio":
+                        audio_file.write(chunk["data"])
+                    elif chunk["type"] == "WordBoundary":
+                        words.append((chunk["text"], chunk["offset"] / 1e7,
+                                      chunk["duration"] / 1e7))
+            if mp3_path.stat().st_size > 1000 and words:
+                print(f"Voice generated successfully with {voice}.")
+                return words
+            raise RuntimeError("Edge TTS returned no usable audio or word timings.")
+        except Exception as exc:
+            last_error = exc
+            if mp3_path.exists():
+                mp3_path.unlink()
+            print(f"Voice attempt {attempt}/{len(voices)} failed ({voice}): {exc}")
+            if attempt < len(voices):
+                await asyncio.sleep(3 * attempt)
+
+    raise RuntimeError(
+        "Voice generation failed with all fallback voices. "
+        f"Last Edge TTS error: {last_error}"
+    )
 
 
 # ---------- 2. backgrounds ----------
