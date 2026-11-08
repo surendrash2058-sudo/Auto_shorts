@@ -2,7 +2,7 @@
 auto_shorts.py - makes ONE "What if" YouTube Short from the next unfinished topic
 in topics.json, then (optionally) uploads it.
 
-Steps: find trends -> Claude writes script -> stock video -> voice (edge-tts, free) -> word-synced captions -> render frame by frame -> upload
+Steps: find trends -> Gemini writes script -> stock video -> voice (edge-tts, free) -> word-synced captions -> render frame by frame -> upload
 
 Run:
     python auto_shorts.py            # make the next video only
@@ -1110,12 +1110,29 @@ def parse_topics(text):
     return out
 
 
+def gemini_text(prompt, max_output_tokens=4000):
+    """Generate text with the Google Gemini Developer API."""
+    from google import genai
+
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        raise RuntimeError("GEMINI_API_KEY is not set. Add it to your environment or GitHub Actions secrets.")
+    client = genai.Client(api_key=api_key)
+    response = client.models.generate_content(
+        model=os.environ.get("GEMINI_MODEL", "gemini-3.8-flash"),
+        contents=prompt,
+        config={"max_output_tokens": max_output_tokens, "response_mime_type": "application/json"},
+    )
+    if not response.text:
+        raise RuntimeError("Gemini returned an empty response.")
+    return response.text.strip()
+
+
 def add_topics(topics, n, trends=None, front=False):
-    """Ask Claude for n new original scripts (inspired by trends) and add them to the queue."""
-    if not os.environ.get("ANTHROPIC_API_KEY"):
-        print("ANTHROPIC_API_KEY is not set, so no new topics were written.")
+    """Ask Gemini for new original scripts inspired by current trends."""
+    if not os.environ.get("GEMINI_API_KEY"):
+        print("GEMINI_API_KEY is not set, so no new topics were written.")
         return topics
-    import anthropic
     prompt = (
         f"Write {n} NEW YouTube Shorts scripts for a 'What if' science channel.\n"
         "Rules: first sentence is a shocking hook; 55-75 words; simple English; "
@@ -1130,15 +1147,11 @@ def add_topics(topics, n, trends=None, front=False):
                    "\nPick the topic idea that is trending most, and write an ORIGINAL script about it "
                    "with your own wording and a fresh angle. Never copy their titles or wording.\n")
     prompt += 'Reply with ONLY a JSON array like [{"title": "What if ...?", "script": "...", "keywords": "..."}]'
-    client = anthropic.Anthropic()
-    msg = client.messages.create(model=os.environ.get("CLAUDE_MODEL", "claude-sonnet-5-5"),
-                                 max_tokens=4000, messages=[{"role": "user", "content": prompt}])
+    generated = gemini_text(prompt, max_output_tokens=4000)
     have = {t["title"].lower() for t in topics}
-    new = [t for t in parse_topics(msg.content[0].text) if t["title"].lower() not in have][:n]
+    new = [t for t in parse_topics(generated) if t["title"].lower() not in have][:n]
     print(f"Added {len(new)} new topics.")
     return (new + topics) if front else (topics + new)
-
-
 def refill(topics, min_left=3, batch=7):
     if sum(1 for t in topics if not t.get("done")) >= min_left:
         return topics
@@ -1198,47 +1211,37 @@ def cat_query(scene_text, title=""):
     return CAT_QUERY[pick_anim(scene_text, title)]
 
 
-# ---------- scene planning (Claude) + drawn illustrations ----------
+# ---------- scene planning (Gemini) + drawn illustrations ----------
 def plan_scenes(texts, title):
-    """For each scene: a photo search phrase and (optionally) a simple drawing made by Claude."""
+    """Create photo search phrases and optional drawings with Gemini."""
     plan = [{"query": cat_query(t, title), "art": None} for t in texts]
-    if not os.environ.get("ANTHROPIC_API_KEY"):
+    if not os.environ.get("GEMINI_API_KEY"):
         return plan
     try:
-        import anthropic
         listing = "\n".join(f"{i + 1}. {t}" for i, t in enumerate(texts))
         prompt = (
             f"Video title: {title}\nScenes of the voiceover, in order:\n{listing}\n\n"
             "For EACH scene give:\n"
-            '- "query": 2-4 plain English words to find a REAL PHOTO of the scene\'s main subject '
+            '- "query": 2-4 plain English words to find a REAL PHOTO of the scene main subject '
             "(examples: 'frozen ocean ice', 'sun solar flare', 'planet earth space').\n"
-            '- "art": a simple, bold, flat illustration of what that scene says, as drawing steps on a canvas '
-            "1000 wide x 1778 tall (x goes right, y goes down). Put the main subject big, between y=200 and y=950 "
-            "(captions cover the lower part). Format: "
-            '{"bg":["#top color","#bottom color"],"shapes":[{"t":"circle","x":500,"y":600,"r":220,"fill":"#ffcc00","glow":true},'
-            '{"t":"rect","x":0,"y":0,"w":100,"h":100,"fill":"#ffffff"},{"t":"poly","pts":[[0,0],[10,0],[5,9]],"fill":"#ffffff"},'
-            '{"t":"line","pts":[[0,0],[100,100]],"w":8,"fill":"#ffffff"},{"t":"text","x":500,"y":300,"s":"8 min","size":110,"fill":"#ffffff"}]}. '
-            "Use 10-25 shapes, bright colors, a background that fits the topic (dark blue for space, etc.).\n"
-            "Reply with ONLY a JSON array with one object per scene, in order: "
-            '[{"query":"...","art":{...}}, ...]'
+            '- "art": a simple, bold, flat illustration as drawing steps on a canvas '
+            "1000 wide x 1778 tall (x goes right, y goes down). Put the main subject big, between y=200 and y=950. "
+            "Format: {\"bg\":[\"#top color\",\"#bottom color\"],\"shapes\":[{\"t\":\"circle\",\"x\":500,\"y\":600,\"r\":220,\"fill\":\"#ffcc00\",\"glow\":true}]} . "
+            "Use 10-25 shapes, bright colors, and a background that fits the topic.\n"
+            "Reply with ONLY a JSON array with one object per scene: [{\"query\":\"...\",\"art\":{...}}]"
         )
-        msg = anthropic.Anthropic().messages.create(
-            model=os.environ.get("CLAUDE_MODEL", "claude-sonnet-5-5"), max_tokens=9000,
-            messages=[{"role": "user", "content": prompt}])
-        text = msg.content[0].text.strip()
+        text = gemini_text(prompt, max_output_tokens=9000)
         if text.startswith("```"):
             text = text.split("\n", 1)[1].rsplit("```", 1)[0]
         data = json.loads(text)
         for i in range(len(texts)):
-            d = data[i] if i < len(data) and isinstance(data[i], dict) else {}
-            plan[i] = {"query": str(d.get("query") or plan[i]["query"]),
-                       "art": d.get("art") if isinstance(d.get("art"), dict) else None}
+            item = data[i] if i < len(data) and isinstance(data[i], dict) else {}
+            plan[i] = {"query": str(item.get("query") or plan[i]["query"]),
+                       "art": item.get("art") if isinstance(item.get("art"), dict) else None}
         print("Scene plan ready (photo searches + drawings).")
     except Exception as e:
         print("Scene planning failed, using simple searches:", e)
     return plan
-
-
 def hexcol(c, default=(255, 255, 255)):
     try:
         c = str(c).lstrip("#")
@@ -1250,7 +1253,7 @@ def hexcol(c, default=(255, 255, 255)):
 
 
 def render_art(spec):
-    """Draw Claude's illustration steps with Pillow (no internet needed)."""
+    """Draw Gemini's illustration steps with Pillow (no internet needed)."""
     SS = 2
     w, h = W * SS, H * SS
     sx, sy = w / 1000, h / 1778
