@@ -1049,7 +1049,7 @@ def find_trending(days=7, n=15):
             params = {
                 "part": "snippet", "type": "video", "q": term,
                 "order": "viewCount", "publishedAfter": after,
-                "videoDuration": "short", "relevanceLanguage": "en",
+                "videoDuration": "short", "relevanceLanguage": "en", "regionCode": "US",
                 "maxResults": min(n, 25), "key": key,
             }
             data = http_json(
@@ -1154,7 +1154,10 @@ def add_topics(topics, n, trends=None, front=False):
         return topics
     prompt = (
         f"Write {n} NEW YouTube Shorts scripts for a 'What if' science channel.\n"
-        "Rules: first sentence is a shocking hook; 55-75 words; simple English; "
+        "Target audience: viewers in the United States. Use natural, conversational American English, "
+        "clear pronunciation-friendly wording, and examples familiar to US viewers when relevant; "
+        "keep the science globally understandable and avoid forced slang. "
+        "Rules: first sentence is a strong curiosity hook; 55-75 words; simple English; "
         "scientifically accurate (no made-up numbers; say 'about' when unsure); "
         "short sentences; the last sentence is exactly: Follow for more what if stories.\n"
         "Also give 'keywords': 2 or 3 plain English words to search stock footage for the video background "
