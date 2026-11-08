@@ -2,6 +2,6 @@ edge-tts
 pillow
 google-api-python-client
 google-auth-oauthlib
-anthropic
 numpy
 google-auth>=2.30.0
+google-genai
