@@ -1486,16 +1486,56 @@ def fetch_clip(keywords, out_path):
         print("Stock clip failed, using plain background:", e)
         return None
 
+def fetch_pixabay_clip(keywords, out_path):
+    """Download a scene-matched free stock video from Pixabay."""
+    key = os.environ.get("PIXABAY_API_KEY")
+    if not key or not keywords:
+        return None
+    try:
+        params = urllib.parse.urlencode({
+            "key": key, "q": keywords, "video_type": "film",
+            "per_page": 12, "safesearch": "true"
+        })
+        hits = http_json("https://pixabay.com/api/videos/?" + params).get("hits", [])
+        if not hits:
+            print("No Pixabay video found for:", keywords)
+            return None
+        # Prefer the best available rendition; portrait is preferred when available,
+        # otherwise use a good landscape clip and crop it to the Shorts frame.
+        candidates = []
+        for hit in hits:
+            videos = hit.get("videos", {})
+            for size in ("large", "medium", "small"):
+                item = videos.get(size, {})
+                url = item.get("url")
+                w, h = item.get("width") or 0, item.get("height") or 0
+                if url:
+                    candidates.append((1 if h > w else 0, w * h, url))
+                    break
+        if not candidates:
+            return None
+        url = sorted(candidates, reverse=True)[0][2]
+        req = urllib.request.Request(url, headers={"User-Agent": "auto-shorts"})
+        with urllib.request.urlopen(req, timeout=120) as response, open(out_path, "wb") as output:
+            output.write(response.read())
+        return out_path
+    except Exception as e:
+        print("Pixabay video search failed:", e)
+        return None
+
+
 def fetch_scene_videos(scenes, plan, slug):
-    """Get a separate real vertical stock video for each narration scene."""
+    """Get a separate scene-matched stock video, preferring Pexels then Pixabay."""
     clips = []
-    if not os.environ.get("PEXELS_API_KEY"):
-        print("PEXELS_API_KEY is missing; scene videos will use image/animation fallbacks.")
+    if not os.environ.get("PEXELS_API_KEY") and not os.environ.get("PIXABAY_API_KEY"):
+        print("No stock video API key is configured; using image/animation fallbacks.")
         return None
     for i, scene in enumerate(scenes):
-        query = (plan[i].get("query") or simple_query(scene) or scene)[:120]
+        query = (plan[i].get("query") or simple_query(scene) or scene)[:100]
         path = OUT / f"{slug}_video_scene{i}.mp4"
-        clip = fetch_clip(query, path)
+        clip = fetch_clip(query, path) if os.environ.get("PEXELS_API_KEY") else None
+        if not clip and os.environ.get("PIXABAY_API_KEY"):
+            clip = fetch_pixabay_clip(query, path)
         if clip:
             clips.append(str(clip))
             print(f"  scene video {i + 1}/{len(scenes)} -> {query}")
