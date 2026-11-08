@@ -1504,40 +1504,38 @@ def fetch_scene_videos(scenes, plan, slug):
     return clips if any(clips) else None
 
 
-def render_with_scene_videos(title, words, mp3_path, mp4_path, clips, scene_texts):
-    """Render scene-specific moving footage, falling back to a still/animation for missing clips."""
+def render_with_scene_videos(title, words, mp3_path, mp4_path, clips, scene_texts, scene_imgs=None):
+    """Render scene-specific moving footage, using a matching still image when a clip is unavailable."""
     total = words[-1][1] + words[-1][2] + 0.8
     n_frames = int(total * FPS)
     weights = [max(len(t), 1) for t in scene_texts]
     durations = [total * w / sum(weights) for w in weights]
-    usable = [c for c in clips if c]
-    if not usable:
+    if not any(clips):
         return False
 
-    inputs, filters, labels = [], [], []
-    for i, clip in enumerate(clips):
-        if clip:
-            inputs += ["-i", clip]
-            input_index = sum(1 for c in clips[:i] if c)
-            filters.append(
-                f"[{input_index}:v]trim=duration={durations[i]:.3f},setpts=PTS-STARTPTS,"
-                f"scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H},"
-                f"setsar=1,fps={FPS},format=rgb24[v{i}]"
-            )
-            labels.append(f"[v{i}]")
-    # Reuse the nearest available moving clip where a scene has no stock result.
-    if len(labels) != len(clips):
-        first = labels[0]
-        for i, clip in enumerate(clips):
-            if not clip:
-                filters.append(f"{first}null[v{i}]")
-                labels.append(f"[v{i}]")
-        labels = [f"[v{i}]" for i in range(len(clips))]
-    filters.append("".join(labels) + f"concat=n={len(clips)}:v=1:a=0[outv]")
     decode_cmd = ["ffmpeg", "-y", "-loglevel", "error"]
+    filters, labels = [], []
+    input_index = 0
     for i, clip in enumerate(clips):
         if clip:
             decode_cmd += ["-i", clip]
+        elif scene_imgs and i < len(scene_imgs) and scene_imgs[i] is not None:
+            image_path = OUT / f"{mp4_path.stem}_fallback_scene{i}.jpg"
+            scene_imgs[i].save(image_path, quality=92)
+            decode_cmd += ["-loop", "1", "-t", f"{durations[i]:.3f}", "-i", str(image_path)]
+        else:
+            # Last-resort fallback: reuse the first available real clip.
+            first_clip = next(c for c in clips if c)
+            decode_cmd += ["-i", first_clip]
+        filters.append(
+            f"[{input_index}:v]trim=duration={durations[i]:.3f},setpts=PTS-STARTPTS,"
+            f"scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H},"
+            f"setsar=1,fps={FPS},format=rgb24[v{i}]"
+        )
+        labels.append(f"[v{i}]")
+        input_index += 1
+
+    filters.append("".join(labels) + f"concat=n={len(clips)}:v=1:a=0[outv]")
     decode_cmd += ["-filter_complex", ";".join(filters), "-map", "[outv]",
                    "-an", "-f", "rawvideo", "-pix_fmt", "rgb24", "-vsync", "0", "pipe:1"]
     encode_cmd = ["ffmpeg", "-y", "-loglevel", "error", "-f", "rawvideo",
@@ -1565,9 +1563,8 @@ def render_with_scene_videos(title, words, mp3_path, mp4_path, clips, scene_text
     enc_rc = encoder.wait()
     if dec_rc != 0 or enc_rc != 0:
         raise RuntimeError("FFmpeg failed while rendering scene-specific stock footage.")
-    print("Rendered with scene-specific moving stock footage.")
+    print("Rendered with scene-matched moving footage and fallback visuals.")
     return True
-
 
 
 def scene_visual_names(texts, title):
@@ -1643,7 +1640,7 @@ def main():
           "real pictures (3D/animation where none found)" if scene_imgs else "stock video" if clip
           else "3D renders" if is3d else "built-in animations" if scene_anims else "stars background")
     if scene_videos:
-        render_with_scene_videos(todo["title"], words, mp3, mp4, scene_videos, scene_texts)
+        render_with_scene_videos(todo["title"], words, mp3, mp4, scene_videos, scene_texts, scene_imgs)
     else:
         render(todo["title"], words, mp3, mp4, clip, scene_imgs, scene_texts, scene_anims)
     print("Video ready:", mp4)
