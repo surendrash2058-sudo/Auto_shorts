@@ -1,6 +1,6 @@
 # Auto Shorts - fully automatic "What if" YouTube Shorts
 
-Every day: find trending "what if" videos -> Claude writes an original script -> free stock video (Pexels)
+Every day: find trending "what if" videos -> Gemini writes an original script -> free stock video (Pexels)
 -> free AI voice (edge-tts) -> word-synced captions -> upload to YouTube.
 
 ## Files
@@ -17,7 +17,7 @@ Every day: find trending "what if" videos -> Claude writes an original script ->
 4. On your computer: `pip install -r requirements.txt`, install ffmpeg, then run `python auto_shorts.py --upload`
    once and log in. This creates `token.json`.
 5. GitHub repo > Settings > Secrets and variables > Actions, add 4 secrets:
-   `YOUTUBE_TOKEN_JSON` (contents of token.json), `ANTHROPIC_API_KEY`, `YOUTUBE_API_KEY`, `PEXELS_API_KEY`.
+   `YOUTUBE_TOKEN_JSON` (contents of token.json), `GEMINI_API_KEY`, `YOUTUBE_API_KEY`, `PEXELS_API_KEY`.
 6. Actions tab > Daily What-If Short > Run workflow to test.
 
 ## Visuals: 3D renders made by code (default, free, no internet, original = good for monetizing)
@@ -35,7 +35,7 @@ To add a new 3D look: write draw_xxx + a branch in render3d + a rule in KIND3D /
 
 ## Notes
 - New API projects can only upload as **private** until Google audits the project.
-- Without ANTHROPIC_API_KEY the system uses the 20 starter topics in topics.json (about 20 days) and cannot write new ones or use trends. Add the key later to unlock trending-topic scripts.
+- Without GEMINI_API_KEY the system uses starter topics and cannot generate new scripts or Gemini scene plans. Add the key to enable automatic script generation.
 - Not tested with real internet: trend search, Pexels download, voice, upload, GitHub Action.
 
 
@@ -46,7 +46,7 @@ The GitHub Actions workflow in `.github/workflows/daily.yml` runs daily at 18:00
 Add these GitHub Actions secrets:
 - `YOUTUBE_API_KEY`
 - `YOUTUBE_TOKEN_JSON`
-- `ANTHROPIC_API_KEY`
+- `GEMINI_API_KEY`
 - Optional: `PEXELS_API_KEY`, `PIXABAY_API_KEY`
 
 Do not change `PRIVACY=private` until you have reviewed several generated videos and confirmed the OAuth account, science, visuals, audio rights, and channel settings. GitHub-hosted runners are temporary: the local `topics.json` queue and generated files do not persist between runs unless saved as artifacts or committed to durable storage. A later milestone should move topic history and outputs to persistent storage.
