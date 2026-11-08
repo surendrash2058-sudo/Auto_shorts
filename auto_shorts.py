@@ -33,7 +33,7 @@ TOPICS = HERE / "topics.json"
 OUT = HERE / "output"
 IMAGES = HERE / "images"          # optional: put your own pictures here
 W, H, FPS = 1080, 1920, 30
-VOICE = "en-US-AndrewNeural"      # try also: en-US-AriaNeural, en-GB-RyanNeural
+VOICE = "en-US-AndrewNeural"      # natural-sounding male English voice
 
 FONT_CANDIDATES = [
     "C:/Windows/Fonts/arialbd.ttf",
@@ -58,7 +58,7 @@ async def make_voice(text, mp3_path):
     """Generate speech with retries and alternate Microsoft Edge voices."""
     import edge_tts
 
-    voices = [VOICE, "en-US-AriaNeural", "en-GB-RyanNeural"]
+    voices = [VOICE, "en-GB-RyanNeural", "en-US-GuyNeural"]
     last_error = None
     for attempt, voice in enumerate(voices, start=1):
         words = []
@@ -1513,7 +1513,7 @@ def main():
     print("1/3 voice...")
     words = asyncio.run(make_voice(todo["script"], mp3))
     kw = todo.get("keywords") or todo["title"].replace("What if", "").strip(" ?")
-    mode = os.environ.get("VISUALS", "3d")   # 3d (default, free) | auto (real photos) | anim | images | stock | plain
+    mode = os.environ.get("VISUALS", "auto")   # 3d (default, free) | auto (real photos) | anim | images | stock | plain
     scene_texts = split_scenes(todo["script"])
     scene_imgs, scene_anims, clip, is3d = None, None, None, False
     if mode in ("auto", "images"):
