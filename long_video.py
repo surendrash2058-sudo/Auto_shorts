@@ -270,10 +270,11 @@ def render_long_video(title, words, narration, output, clips, scenes, images):
     caption_file = output.with_suffix(".srt")
     write_captions(words, caption_file)
     caption_path = str(caption_file.resolve()).replace("\\\\", "/").replace(":", "\\\\:")
+    # Keep the subtitle style deliberately simple to avoid FFmpeg filter-option
+    # parsing issues across runner versions.
     filters.append(
         f"[outv]subtitles='{caption_path}':force_style='FontName=DejaVu Sans,"
-        "FontSize=26,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,"
-        "BorderStyle=1,Outline=2,Shadow=1,Alignment=2,MarginV=48'[captioned]"
+        "FontSize=26,Outline=2,Shadow=1,Alignment=2,MarginV=48'[captioned]"
     )
 
     narration_index = len(scenes)
@@ -290,13 +291,18 @@ def render_long_video(title, words, narration, output, clips, scenes, images):
         filters.append(f"[{narration_index}:a]loudnorm=I=-16:TP=-1.5:LRA=11[aout]")
         audio_map = "[aout]"
 
-    cmd += ["-filter_complex", ";".join(filters), "-map", "[captioned]", "-map", audio_map,
+    # Store the complex graph in a file. This avoids shell/argument-length and
+    # quoting problems when many scene filters and subtitle options are combined.
+    graph_file = output.with_suffix(".filtergraph")
+    graph_file.write_text(";".join(filters), encoding="utf-8")
+    cmd += ["-filter_complex_script", str(graph_file), "-map", "[captioned]", "-map", audio_map,
             "-t", f"{total:.3f}", "-c:v", "libx264", "-preset", "veryfast", "-crf", "21",
             "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart",
             str(output)]
     result = subprocess.run(cmd, capture_output=True, text=True, timeout=2400)
     if result.returncode:
-        raise RuntimeError("FFmpeg long-video render failed: " + (result.stderr or result.stdout or "")[-3000:])
+        detail = (result.stderr or result.stdout or "No FFmpeg diagnostic output.")
+        raise RuntimeError("FFmpeg long-video render failed:\\n" + detail[-7000:])
 
 
 def main():
