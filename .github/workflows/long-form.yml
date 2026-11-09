@@ -42,7 +42,7 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
           PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
-          PRIVACY: public
+          PRIVACY: private
         run: python long_video.py
 
       - name: Persist long-video topic history
