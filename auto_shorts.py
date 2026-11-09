@@ -1052,7 +1052,16 @@ def upload(mp4_path, title, description, tags, privacy="private"):
         status, resp = req.next_chunk()
         if status:
             print(f"  uploading {int(status.progress() * 100)}%")
-    return resp["id"]
+    video_id = resp["id"]
+    try:
+        published = yt.videos().list(part="status", id=video_id).execute()
+        actual = (published.get("items") or [{}])[0].get("status", {}).get("privacyStatus", "unknown")
+        print(f"YouTube visibility check: requested={privacy}, actual={actual}.")
+        if actual != privacy:
+            print("WARNING: YouTube did not apply the requested visibility. Check YouTube Studio and API project verification.")
+    except Exception as exc:
+        print("WARNING: Could not verify YouTube visibility automatically:", exc)
+    return video_id
 
 
 # ---------- 5. trends, topic writing, stock video ----------
@@ -1303,7 +1312,7 @@ def plan_scenes(texts, title):
             item = data[i] if i < len(data) and isinstance(data[i], dict) else {}
             plan[i] = {"query": str(item.get("query") or plan[i]["query"]),
                        "art": item.get("art") if isinstance(item.get("art"), dict) else None}
-        print("Scene plan ready (photo searches + drawings).")
+        print("Scene plan ready (scene-specific moving-footage searches + illustration fallbacks).")
     except Exception as e:
         print("Scene planning failed, using simple searches:", e)
     return plan
@@ -1575,7 +1584,9 @@ def render_with_scene_videos(title, words, mp3_path, mp4_path, clips, scene_text
     """Build a scene-matched video reel, then use the stable caption renderer."""
     total = words[-1][1] + words[-1][2] + 0.8
     weights = [max(len(t.split()), 1) for t in scene_texts]
-    durations = [total * w / sum(weights) for w in weights]
+    transition = 0.22
+    timeline_total = total + transition * max(0, len(scene_texts) - 1)
+    durations = [timeline_total * w / sum(weights) for w in weights]
     if not any(clips):
         return False
 
@@ -1602,11 +1613,25 @@ def render_with_scene_videos(title, words, mp3_path, mp4_path, clips, scene_text
         filters.append(
             f"[{i}:v]trim=duration={durations[i]:.3f},setpts=PTS-STARTPTS,"
             f"scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H},"
-            f"setsar=1,fps={FPS},format=yuv420p[v{i}]"
+            f"setsar=1,fps={FPS},settb=AVTB,format=yuv420p[v{i}]"
         )
         labels.append(f"[v{i}]")
 
-    filters.append("".join(labels) + f"concat=n={len(scene_texts)}:v=1:a=0[outv]")
+    if len(labels) == 1:
+        final_label = labels[0]
+    else:
+        previous = labels[0]
+        for i in range(1, len(labels)):
+            next_label = f"[xf{i}]"
+            offset = sum(durations[:i]) - transition * i
+            filters.append(
+                f"{previous}{labels[i]}xfade=transition=fade:duration={transition:.2f}:"
+                f"offset={offset:.3f}{next_label}"
+            )
+            previous = next_label
+        final_label = previous
+
+    filters.append(f"{final_label}null[outv]")
     cmd += ["-filter_complex", ";".join(filters), "-map", "[outv]", "-an",
             "-t", f"{total:.3f}", "-c:v", "libx264", "-preset", "veryfast",
             "-pix_fmt", "yuv420p", "-movflags", "+faststart", str(reel_path)]
