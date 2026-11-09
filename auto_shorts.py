@@ -921,14 +921,20 @@ def has_images():
     return IMAGES.exists() and any(p.suffix.lower() in (".png", ".jpg", ".jpeg", ".webp") for p in IMAGES.glob("*"))
 
 
-def make_bg_func(scene_imgs, scene_texts, total, scene_anims=None):
+def make_bg_func(scene_imgs, scene_texts, total, scene_anims=None, words=None):
     """Returns f(t) -> background frame: built-in animations, scene pictures, or moving stars."""
     if scene_imgs or scene_anims:
-        weights = [max(len(t), 1) for t in scene_texts]
-        bounds, acc = [], 0
-        for w in weights:
-            acc += w
-            bounds.append(total * acc / sum(weights))
+        bounds = []
+        if words:
+            for i in range(len(scene_texts)):
+                last_word = min(i * 2 + 1, len(words) - 1)
+                bounds.append(min(total, words[last_word][1] + words[last_word][2]))
+        else:
+            weights = [max(len(t), 1) for t in scene_texts]
+            acc = 0
+            for weight in weights:
+                acc += weight
+                bounds.append(total * acc / sum(weights))
 
         def draw_scene(s, tl, p):
             img = scene_imgs[s] if scene_imgs else None
@@ -983,7 +989,7 @@ def render(title, words, mp3_path, mp4_path, clip=None, scene_imgs=None, scene_t
                "-s", f"{W}x{H}", "-r", str(FPS), "-i", "-", "-i", str(mp3_path),
                "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p",
                "-af", "apad", "-c:a", "aac", "-t", dur, str(mp4_path)]
-        bgf, mode = make_bg_func(scene_imgs, scene_texts or [], total, scene_anims), "RGB"
+        bgf, mode = make_bg_func(scene_imgs, scene_texts or [], total, scene_anims, words), "RGB"
     proc = subprocess.Popen(cmd, stdin=subprocess.PIPE)
     try:
         for f in range(n_frames):
