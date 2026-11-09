@@ -1,6 +1,7 @@
 """Generate and publish one 5-8 minute 16:9 What If documentary video."""
 import asyncio
 import json
+import hashlib
 import os
 import re
 import subprocess
@@ -185,11 +186,11 @@ def plan_long_scenes(scenes, title):
     listing = "\n".join(f"{i + 1}. {scene}" for i, scene in enumerate(scenes))
     prompt = (
         f"Documentary title: {title}\nNarration beats in exact order:\n{listing}\n\n"
-        "For every beat return one unique stock-video search query of 4-7 concrete words. "
+        "For every beat return one distinct stock-video search query of 4-7 concrete words, using the complete narration beat to identify the exact visible event. "
         "Describe the visible subject AND action, not the abstract meaning. "
         "Use real-world cinematic footage suitable for a 16:9 science documentary. "
-        "Avoid generic people, repeated queries, text overlays, and portrait-video concepts. "
-        "Keep every query tightly connected to its narration beat. "
+        "Avoid generic people, repeated queries, repeated subjects/compositions, text overlays, and portrait-video concepts. "
+        "Keep every query tightly connected to its narration beat. Queries must be unique and must describe a different visible shot from the previous beat. "
         "Return ONLY a JSON array like [{\"query\":\"planet Earth rotating in deep space\"}]."
     )
     try:
@@ -212,6 +213,7 @@ def plan_long_scenes(scenes, title):
 def fetch_long_scene_videos(scenes, plan, slug):
     """Fetch landscape-only footage; never stretch portrait Shorts footage into a long video."""
     clips = []
+    used_clip_hashes = set()
     pexels_key = os.environ.get("PEXELS_API_KEY")
     pixabay_key = os.environ.get("PIXABAY_API_KEY")
     for i, scene in enumerate(scenes):
@@ -262,8 +264,16 @@ def fetch_long_scene_videos(scenes, plan, slug):
                         clip = str(path)
             except Exception as exc:
                 print(f"  Pixabay landscape search failed for shot {i + 1}: {exc}")
+        if clip:
+            digest = hashlib.sha256(Path(clip).read_bytes()).hexdigest()
+            if digest in used_clip_hashes:
+                print(f"  repeated landscape clip rejected for beat {i + 1}: {query}")
+                Path(clip).unlink(missing_ok=True)
+                clip = None
+            else:
+                used_clip_hashes.add(digest)
         clips.append(clip)
-        print(f"  landscape footage {i + 1}/{len(scenes)} -> {query}: {'found' if clip else 'image fallback'}")
+        print(f"  unique landscape footage {i + 1}/{len(scenes)} -> {query}: {'found' if clip else 'unique image fallback required'}")
     return clips
 
 
@@ -296,9 +306,21 @@ def write_captions(words, path, words_per_line=5):
 
 def render_long_video(title, words, narration, output, clips, scenes, images):
     total = words[-1][1] + words[-1][2] + 1.0
-    weights = [max(1, len(x.split())) for x in scenes]
+    # Allocate each scene from the actual Edge-TTS word timestamps, not
+    # approximate character/word weights, so visual changes follow narration.
+    word_counts = [max(1, len(re.findall(r"\\S+", scene))) for scene in scenes]
+    raw_durations = []
+    cursor = 0
+    for count in word_counts:
+        start_index = min(cursor, len(words) - 1)
+        end_index = min(cursor + count - 1, len(words) - 1)
+        start_time = float(words[start_index][1])
+        end_time = float(words[end_index][1]) + float(words[end_index][2])
+        raw_durations.append(max(0.25, end_time - start_time))
+        cursor += count
     timeline_total = total + TRANSITION * max(0, len(scenes) - 1)
-    durations = [timeline_total * x / sum(weights) for x in weights]
+    raw_total = sum(raw_durations) or total
+    durations = [x * timeline_total / raw_total for x in raw_durations]
     inputs, filters, labels = [], [], []
     cmd = ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error"]
     for i, scene in enumerate(scenes):
