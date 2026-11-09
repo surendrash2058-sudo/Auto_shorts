@@ -1304,7 +1304,7 @@ STOP = set("""about after again also and any are because been before being betwe
 doing down during each even every first from had has have having here how into its just keep like make more most
 much must now off once only other our out over own same she should some such than that the their them then there
 these they this those through too under until very was were what when where which while who will with would you your
-one two three four five six seven eight nine ten would still""".split())
+one two three four five six seven eight nine ten would still exact spoken words full visual context""".split())
 
 
 def simple_query(text, n=3):
