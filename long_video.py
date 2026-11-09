@@ -38,10 +38,33 @@ def make_topic():
         "Title should be compelling, accurate, under 90 characters. Description 2-3 sentences. "
         "Tags should be 8-12 relevant plain strings."
     )
-    raw = shorts.gemini_text(prompt, max_output_tokens=5000)
-    if raw.startswith("```"):
-        raw = raw.split("\n", 1)[1].rsplit("```", 1)[0]
-    data = json.loads(raw)
+    raw = shorts.gemini_text(prompt, max_output_tokens=6500)
+
+    def decode_json_response(text):
+        text = text.strip()
+        if text.startswith("```"):
+            text = text.split("\n", 1)[1].rsplit("```", 1)[0].strip()
+        return json.loads(text)
+
+    try:
+        data = decode_json_response(raw)
+    except json.JSONDecodeError as first_error:
+        print("Gemini returned malformed topic JSON; requesting a repair and retry...")
+        repair_prompt = (
+            "Repair the following response into valid JSON. Return ONLY a JSON array with exactly "
+            "one object containing title, script, description, and tags. Preserve the original meaning "
+            "and all script content. The script must remain 850-1100 words. Escape all quotation marks "
+            "and newlines correctly. Do not add markdown fences or commentary.\n\n"
+            + raw
+        )
+        repaired = shorts.gemini_text(repair_prompt, max_output_tokens=6500)
+        try:
+            data = decode_json_response(repaired)
+        except json.JSONDecodeError as repair_error:
+            raise RuntimeError(
+                "Gemini returned invalid JSON twice; first error: "
+                + str(first_error) + "; repair error: " + str(repair_error)
+            ) from repair_error
     if not isinstance(data, list) or not data:
         raise RuntimeError("Gemini did not return a long-video topic.")
     item = data[0]
