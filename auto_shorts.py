@@ -64,7 +64,7 @@ async def make_voice(text, mp3_path):
         words = []
         try:
             try:
-                comm = edge_tts.Communicate(text, voice, boundary="WordBoundary")
+                comm = edge_tts.Communicate(text, voice, rate="-5%", pitch="-1Hz", volume="+0%", boundary="WordBoundary")
             except TypeError:                  # older edge-tts versions
                 comm = edge_tts.Communicate(text, voice)
             with open(mp3_path, "wb") as audio_file:
@@ -999,6 +999,27 @@ def render(title, words, mp3_path, mp4_path, clip=None, scene_imgs=None, scene_t
 
 
 # ---------- 4. upload ----------
+def validate_video(path):
+    """Fail safely before upload if FFmpeg created a corrupt or non-Shorts file."""
+    if not path.exists() or path.stat().st_size < 100_000:
+        raise RuntimeError("Rendered video is missing or unexpectedly small.")
+    probe = subprocess.run(
+        ["ffprobe", "-v", "error", "-show_entries",
+         "format=duration:stream=codec_type,width,height", "-of", "json", str(path)],
+        capture_output=True, text=True, timeout=30
+    )
+    if probe.returncode != 0:
+        raise RuntimeError("ffprobe could not read the rendered video: " + (probe.stderr or "")[-800:])
+    info = json.loads(probe.stdout or "{}")
+    video = next((x for x in info.get("streams", []) if x.get("codec_type") == "video"), None)
+    duration = float(info.get("format", {}).get("duration", 0) or 0)
+    if not video or video.get("width") != W or video.get("height") != H:
+        raise RuntimeError("Rendered video must be 1080x1920 vertical video.")
+    if not 5 <= duration <= 180:
+        raise RuntimeError(f"Rendered video duration is outside the expected Shorts range: {duration:.1f}s.")
+    print(f"Video validation passed: 1080x1920, {duration:.1f}s, {path.stat().st_size:,} bytes.")
+
+
 def upload(mp4_path, title, description, tags, privacy="private"):
     from google.auth.transport.requests import Request
     from google.oauth2.credentials import Credentials
@@ -1173,9 +1194,13 @@ def add_topics(topics, n, trends=None, front=False):
         "Target audience: viewers in the United States. Use natural, conversational American English, "
         "clear pronunciation-friendly wording, and examples familiar to US viewers when relevant; "
         "keep the science globally understandable and avoid forced slang. "
-        "Rules: first sentence is a strong curiosity hook; 55-75 words; simple English; "
-        "scientifically accurate (no made-up numbers; say 'about' when unsure); "
-        "short sentences; the last sentence is exactly: Follow for more what if stories.\n"
+        "Rules: 55-75 spoken words; open with a surprising, specific hook in the first 2 seconds; "
+        "use short, natural American English sentences that sound good when spoken aloud; "
+        "build curiosity with a clear beginning, escalating consequence, and satisfying final reveal; "
+        "keep claims scientifically accurate, never invent statistics, and say about when uncertain; "
+        "avoid filler, repeated phrases, awkward abbreviations, and hard-to-pronounce number strings; "
+        "make the title compelling and accurate, ideally 35-65 characters, with no misleading clickbait; "
+        "the last sentence is exactly: Follow for more what if stories.\n"
         "Also give 'keywords': 2 or 3 plain English words to search stock footage for the video background "
         "(example: 'planet earth space').\n"
         "Do NOT repeat these topics: " + "; ".join(t["title"] for t in topics) + "\n"
@@ -1260,8 +1285,10 @@ def plan_scenes(texts, title):
         prompt = (
             f"Video title: {title}\nScenes of the voiceover, in order:\n{listing}\n\n"
             "For EACH scene give:\n"
-            '- "query": 2-4 plain English words to find a REAL PHOTO of the scene main subject '
-            "(examples: 'frozen ocean ice', 'sun solar flare', 'planet earth space').\n"
+            '- "query": 3-5 plain English words to find a REAL MOVING VIDEO CLIP showing the exact action or subject '
+            "(examples: 'earth rotating in space', 'city traffic time lapse', 'cracked dry earth close up', "
+            "'solar flare erupting from sun'). Prefer concrete visible actions, environments, and camera subjects; "
+            "do not use abstract words, generic people, or a query that does not match the scene narration.\n"
             '- "art": a simple, bold, flat illustration as drawing steps on a canvas '
             "1000 wide x 1778 tall (x goes right, y goes down). Put the main subject big, between y=200 and y=950. "
             "Format: {\"bg\":[\"#top color\",\"#bottom color\"],\"shapes\":[{\"t\":\"circle\",\"x\":500,\"y\":600,\"r\":220,\"fill\":\"#ffcc00\",\"glow\":true}]} . "
@@ -1545,66 +1572,59 @@ def fetch_scene_videos(scenes, plan, slug):
 
 
 def render_with_scene_videos(title, words, mp3_path, mp4_path, clips, scene_texts, scene_imgs=None):
-    """Render scene-specific moving footage, using a matching still image when a clip is unavailable."""
+    """Build a scene-matched video reel, then use the stable caption renderer."""
     total = words[-1][1] + words[-1][2] + 0.8
-    n_frames = int(total * FPS)
-    weights = [max(len(t), 1) for t in scene_texts]
+    weights = [max(len(t.split()), 1) for t in scene_texts]
     durations = [total * w / sum(weights) for w in weights]
     if not any(clips):
         return False
 
-    decode_cmd = ["ffmpeg", "-y", "-loglevel", "error"]
+    # Normalize each scene in one FFmpeg filter graph. Avoid piping decoded
+    # 1080x1920 raw frames between two FFmpeg processes (the old broken-pipe bug).
+    reel_path = OUT / f"{mp4_path.stem}_scene_reel.mp4"
+    cmd = ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error"]
     filters, labels = [], []
-    input_index = 0
-    for i, clip in enumerate(clips):
-        if clip:
-            decode_cmd += ["-stream_loop", "-1", "-i", clip]
+    for i in range(len(scene_texts)):
+        if i < len(clips) and clips[i]:
+            cmd += ["-stream_loop", "-1", "-i", str(clips[i])]
         elif scene_imgs and i < len(scene_imgs) and scene_imgs[i] is not None:
             image_path = OUT / f"{mp4_path.stem}_fallback_scene{i}.jpg"
             scene_imgs[i].save(image_path, quality=92)
-            decode_cmd += ["-loop", "1", "-t", f"{durations[i]:.3f}", "-i", str(image_path)]
+            cmd += ["-loop", "1", "-framerate", str(FPS), "-t", f"{durations[i]:.3f}",
+                    "-i", str(image_path)]
         else:
-            # Last-resort fallback: reuse the first available real clip.
-            first_clip = next(c for c in clips if c)
-            decode_cmd += ["-i", first_clip]
+            # Keep the sequence complete without substituting unrelated footage.
+            fallback = OUT / f"{mp4_path.stem}_blank_scene{i}.jpg"
+            Image.new("RGB", (W, H), (12, 18, 38)).save(fallback, quality=90)
+            cmd += ["-loop", "1", "-framerate", str(FPS), "-t", f"{durations[i]:.3f}",
+                    "-i", str(fallback)]
+
         filters.append(
-            f"[{input_index}:v]trim=duration={durations[i]:.3f},setpts=PTS-STARTPTS,"
+            f"[{i}:v]trim=duration={durations[i]:.3f},setpts=PTS-STARTPTS,"
             f"scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H},"
-            f"setsar=1,fps={FPS},format=rgb24[v{i}]"
+            f"setsar=1,fps={FPS},format=yuv420p[v{i}]"
         )
         labels.append(f"[v{i}]")
-        input_index += 1
 
-    filters.append("".join(labels) + f"concat=n={len(clips)}:v=1:a=0[outv]")
-    decode_cmd += ["-filter_complex", ";".join(filters), "-map", "[outv]",
-                   "-an", "-f", "rawvideo", "-pix_fmt", "rgb24", "-vsync", "0", "pipe:1"]
-    encode_cmd = ["ffmpeg", "-y", "-loglevel", "error", "-f", "rawvideo",
-                  "-pix_fmt", "rgb24", "-s", f"{W}x{H}", "-r", str(FPS), "-i", "-",
-                  "-i", str(mp3_path), "-c:v", "libx264", "-preset", "veryfast",
-                  "-pix_fmt", "yuv420p", "-af", "apad", "-c:a", "aac",
-                  "-t", f"{n_frames / FPS:.3f}", str(mp4_path)]
-    decoder = subprocess.Popen(decode_cmd, stdout=subprocess.PIPE)
-    encoder = subprocess.Popen(encode_cmd, stdin=subprocess.PIPE)
-    groups = group_words(words)
-    starts = [w[1] for w in words]
+    filters.append("".join(labels) + f"concat=n={len(scene_texts)}:v=1:a=0[outv]")
+    cmd += ["-filter_complex", ";".join(filters), "-map", "[outv]", "-an",
+            "-t", f"{total:.3f}", "-c:v", "libx264", "-preset", "veryfast",
+            "-pix_fmt", "yuv420p", "-movflags", "+faststart", str(reel_path)]
     try:
-        for frame_no in range(n_frames):
-            raw = decoder.stdout.read(W * H * 3)
-            if len(raw) != W * H * 3:
-                break
-            bg = Image.frombytes("RGB", (W, H), raw)
-            t = frame_no / FPS
-            idx = max([i for i, start in enumerate(starts) if start <= t], default=None)
-            encoder.stdin.write(draw_frame(bg, title, words, groups, idx).tobytes())
-        encoder.stdin.close()
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+        if result.returncode != 0:
+            detail = (result.stderr or result.stdout or "unknown FFmpeg error")[-1800:]
+            raise RuntimeError(detail)
+        if not reel_path.exists() or reel_path.stat().st_size < 10000:
+            raise RuntimeError("FFmpeg produced an empty scene reel.")
+
+        # The existing caption renderer handles narration timing and overlays.
+        render(title, words, mp3_path, mp4_path, clip=reel_path)
+        print("Rendered scene-matched moving footage with timed captions.")
+        return True
     finally:
-        decoder.stdout.close()
-    dec_rc = decoder.wait()
-    enc_rc = encoder.wait()
-    if dec_rc != 0 or enc_rc != 0:
-        raise RuntimeError("FFmpeg failed while rendering scene-specific stock footage.")
-    print("Rendered with scene-matched moving footage and fallback visuals.")
-    return True
+        if reel_path.exists():
+            reel_path.unlink()
 
 
 def scene_visual_names(texts, title):
@@ -1688,6 +1708,7 @@ def main():
     else:
         render(todo["title"], words, mp3, mp4, clip, scene_imgs, scene_texts, scene_anims)
     print("Video ready:", mp4)
+    validate_video(mp4)
 
     if a.upload:
         print("3/3 uploading...")
