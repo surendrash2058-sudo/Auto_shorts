@@ -308,7 +308,7 @@ def render_long_video(title, words, narration, output, clips, scenes, images):
     total = words[-1][1] + words[-1][2] + 1.0
     # Allocate each scene from the actual Edge-TTS word timestamps, not
     # approximate character/word weights, so visual changes follow narration.
-    word_counts = [max(1, len(re.findall(r"\\S+", scene))) for scene in scenes]
+    word_counts = [max(1, len(re.findall(r"\S+", scene))) for scene in scenes]
     raw_durations = []
     cursor = 0
     for count in word_counts:
