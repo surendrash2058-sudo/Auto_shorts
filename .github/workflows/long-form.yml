@@ -35,8 +35,11 @@ jobs:
       - name: Install Python dependencies
         run: pip install -r requirements.txt
 
-      - name: Check Python syntax before generation
-        run: python -m py_compile long_video.py auto_shorts.py
+      - name: Check Python syntax and caption support
+        run: |
+          python -m py_compile long_video.py auto_shorts.py
+          ffmpeg -hide_banner -filters 2>&1 | grep -q subtitles
+          echo "Python syntax and FFmpeg subtitle support are available."
 
       - name: Generate and upload one long video
         env:
