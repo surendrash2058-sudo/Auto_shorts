@@ -1252,7 +1252,7 @@ def split_scenes(script, min_words=10, max_scenes=7):
 
 def split_visual_pairs(script):
     """Create one narration-synchronised visual beat for every two spoken words."""
-    tokens = re.findall(r"\\S+", script.strip())
+    tokens = re.findall(r"\S+", script.strip())
     return [" ".join(tokens[i:i + 2]).strip() for i in range(0, len(tokens), 2) if tokens[i:i + 2]]
 
 
