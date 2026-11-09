@@ -1351,9 +1351,20 @@ def plan_scenes(texts, title):
         if text.startswith("```"):
             text = text.split("\n", 1)[1].rsplit("```", 1)[0]
         data = json.loads(text)
+        used_queries = set()
         for i in range(len(texts)):
             item = data[i] if i < len(data) and isinstance(data[i], dict) else {}
-            plan[i] = {"query": str(item.get("query") or plan[i]["query"]),
+            query = str(item.get("query") or plan[i]["query"]).strip()
+            normalized = re.sub(r"\\s+", " ", query.lower())
+            if normalized in used_queries:
+                contextual_fallback = simple_query(texts[i], n=5) or query
+                query = contextual_fallback
+                normalized = re.sub(r"\\s+", " ", query.lower())
+            if normalized in used_queries:
+                query = f"{query} distinct camera angle {i + 1}"
+                normalized = re.sub(r"\\s+", " ", query.lower())
+            used_queries.add(normalized)
+            plan[i] = {"query": query[:100],
                        "art": item.get("art") if isinstance(item.get("art"), dict) else None}
         print("Scene plan ready (scene-specific moving-footage searches + illustration fallbacks).")
     except Exception as e:
@@ -1779,7 +1790,7 @@ def main():
         scene_videos = fetch_scene_videos(scene_texts, plan, slug)
     if mode in ("auto", "images"):
         print("Preparing AI/photo fallbacks for scenes without video...")
-        scene_imgs = fetch_scene_visuals(scene_texts, plan, slug)
+        scene_imgs = fetch_scene_visuals(scene_contexts, plan, slug)
     if not scene_imgs and not scene_videos and mode in ("auto", "stock"):
         clip = fetch_clip(kw, OUT / f"{slug}_bg.mp4")
     if not clip and mode in ("3d", "anim", "auto", "images"):
