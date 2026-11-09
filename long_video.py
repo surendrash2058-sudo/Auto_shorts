@@ -25,9 +25,12 @@ def make_topic():
         "science-grounded hypothetical scenario with a strong curiosity gap. Do not copy any existing video. "
         "Avoid topics in this recent history: " + previous + ". "
         "Return ONLY a JSON array containing one object with title, script, description, tags. "
-        "The script must be 800-900 spoken words, natural American English for a warm, expressive male narrator. "
+        "The script must be 900-1000 spoken words, natural American English for a warm, expressive male narrator. "
         "Structure: immediate 10-second hook; explain the premise; consequences in a clear timeline; "
         "real scientific reasoning and uncertainty; escalating stakes; satisfying conclusion. "
+        "Every 20-30 seconds introduce a fresh question, surprising consequence, concrete reveal, "
+        "or change in scale to renew curiosity. Use open loops and resolve them later. "
+        "Write vivid visual details that can be shown on screen. Avoid long abstract explanations. "
         "Use short speakable sentences, contractions naturally, no stage directions, no fake statistics, "
         "no unsupported claims, and no repeated filler. End with a brief natural subscribe invitation. "
         "Title should be compelling, accurate, under 90 characters. Description 2-3 sentences. "
@@ -42,8 +45,8 @@ def make_topic():
     item = data[0]
     title, script = str(item.get("title", "")).strip(), str(item.get("script", "")).strip()
     count = len(script.split())
-    if not title or not 700 <= count <= 1000:
-        raise RuntimeError(f"Long script length validation failed ({count} words); expected 700-1000.")
+    if not title or not 850 <= count <= 1100:
+        raise RuntimeError(f"Long script length validation failed ({count} words); expected 850-1100.")
     item["title"] = title[:95]
     item["script"] = script
     item["description"] = str(item.get("description", "")).strip()
@@ -149,8 +152,24 @@ def main():
 
     print("1/4 Generating natural male narration...")
     words = asyncio.run(shorts.make_voice(item["script"], audio))
-    scenes = shorts.split_scenes(item["script"], min_words=45, max_scenes=16)
-    print(f"2/4 Planning {len(scenes)} landscape scenes...")
+    # Short visual beats prevent one stock clip from sitting on screen for 20-30 seconds.
+    # Each beat stays in narration order and is roughly 20-30 spoken words.
+    sentences = [x.strip() for x in re.split(r"(?<=[.!?])\\s+", item["script"]) if x.strip()]
+    scenes, current = [], ""
+    for sentence in sentences:
+        current = (current + " " + sentence).strip()
+        if len(current.split()) >= 22:
+            scenes.append(current)
+            current = ""
+    if current:
+        if scenes and len(current.split()) < 12:
+            scenes[-1] += " " + current
+        else:
+            scenes.append(current)
+    if len(scenes) < 24:
+        scenes = shorts.split_scenes(item["script"], min_words=18, max_scenes=36)
+    scenes = scenes[:42]
+    print(f"2/4 Building a detailed storyboard with {len(scenes)} visual beats...")
     plan = shorts.plan_scenes(scenes, item["title"])
     clips = shorts.fetch_scene_videos(scenes, plan, slug)
     print("Downloading matching still-image fallbacks...")
@@ -160,12 +179,15 @@ def main():
     render_long_video(item["title"], words, audio, video, clips, scenes, images)
     validate_long_video(video)
 
-    print("4/4 Uploading publicly to YouTube...")
+    print("4/4 Uploading as PRIVATE for your review...")
     description = (item.get("description", "") + "\n\n" +
                    "Explore more science-based What If stories on What If Unlocked.\n" +
                    "\n".join(shorts.CREDITS) + "\n#WhatIf #Science #WhatIfUnlocked")
     tags = item.get("tags") or ["what if", "science", "space", "documentary", "what if unlocked"]
-    video_id = shorts.upload(video, item["title"], description, tags, os.environ.get("PRIVACY", "public"))
+    privacy = os.environ.get("PRIVACY", "private").strip().lower()
+    if privacy != "private":
+        raise RuntimeError("Safety lock: long-form videos must be uploaded as PRIVATE.")
+    video_id = shorts.upload(video, item["title"], description, tags, "private")
     item["done"] = True
     item["video_id"] = video_id
     item["published_at"] = __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat()
