@@ -77,7 +77,8 @@ def validate_long_video(path):
 def render_long_video(title, words, narration, output, clips, scenes, images):
     total = words[-1][1] + words[-1][2] + 1.0
     weights = [max(1, len(x.split())) for x in scenes]
-    durations = [total * x / sum(weights) for x in weights]
+    timeline_total = total + TRANSITION * max(0, len(scenes) - 1)
+    durations = [timeline_total * x / sum(weights) for x in weights]
     inputs, filters, labels = [], [], []
     cmd = ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error"]
     for i, scene in enumerate(scenes):
