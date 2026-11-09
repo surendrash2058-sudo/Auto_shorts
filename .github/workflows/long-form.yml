@@ -35,6 +35,9 @@ jobs:
       - name: Install Python dependencies
         run: pip install -r requirements.txt
 
+      - name: Check Python syntax before generation
+        run: python -m py_compile long_video.py auto_shorts.py
+
       - name: Generate and upload one long video
         env:
           YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
