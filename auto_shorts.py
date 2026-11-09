@@ -1355,7 +1355,7 @@ def plan_scenes(texts, title):
         for i in range(len(texts)):
             item = data[i] if i < len(data) and isinstance(data[i], dict) else {}
             query = str(item.get("query") or plan[i]["query"]).strip()
-            normalized = re.sub(r"\\s+", " ", query.lower())
+            normalized = re.sub(r"\s+", " ", query.lower())
             if normalized in used_queries:
                 contextual_fallback = simple_query(texts[i], n=5) or query
                 query = contextual_fallback
