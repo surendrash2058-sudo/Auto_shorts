@@ -1250,6 +1250,12 @@ def split_scenes(script, min_words=10, max_scenes=7):
     return scenes
 
 
+def split_visual_pairs(script):
+    """Create one narration-synchronised visual beat for every two spoken words."""
+    tokens = re.findall(r"\\S+", script.strip())
+    return [" ".join(tokens[i:i + 2]).strip() for i in range(0, len(tokens), 2) if tokens[i:i + 2]]
+
+
 def download(url, path, headers=None, timeout=150):
     req = urllib.request.Request(url, headers=headers or {"User-Agent": "auto-shorts"})
     with urllib.request.urlopen(req, timeout=timeout) as r, open(path, "wb") as f:
@@ -1292,8 +1298,8 @@ def plan_scenes(texts, title):
     try:
         listing = "\n".join(f"{i + 1}. {t}" for i, t in enumerate(texts))
         prompt = (
-            f"Video title: {title}\nScenes of the voiceover, in order:\n{listing}\n\n"
-            "For EACH scene give:\n"
+            f"Video title: {title}\nVoiceover visual beats in exact order (each beat is exactly two consecutive spoken words):\n{listing}\n\n"
+            "For EACH two-word beat, create a concrete visual that directly depicts those words in the context of the title and surrounding story. Do not use merely related general-topic footage. If the pair contains a pronoun or helper word, infer its actual referent/action from nearby narration. Never use generic filler footage. For EACH beat give:\n"
             '- "query": 3-5 plain English words to find a REAL MOVING VIDEO CLIP showing the exact action or subject '
             "(examples: 'earth rotating in space', 'city traffic time lapse', 'cracked dry earth close up', "
             "'solar flare erupting from sun'). Prefer concrete visible actions, environments, and camera subjects; "
@@ -1698,7 +1704,7 @@ def main():
     words = asyncio.run(make_voice(todo["script"], mp3))
     kw = todo.get("keywords") or todo["title"].replace("What if", "").strip(" ?")
     mode = os.environ.get("VISUALS", "auto")   # 3d (default, free) | auto (real photos) | anim | images | stock | plain
-    scene_texts = split_scenes(todo["script"])
+    scene_texts = split_visual_pairs(todo["script"])
     scene_imgs, scene_anims, clip, is3d = None, None, None, False
     plan = None
     scene_videos = None
