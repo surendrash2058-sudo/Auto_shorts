@@ -38,7 +38,17 @@ def make_topic():
         "Title should be compelling, accurate, under 90 characters. Description 2-3 sentences. "
         "Tags should be 8-12 relevant plain strings."
     )
-    raw = shorts.gemini_text(prompt, max_output_tokens=6500)
+    try:
+        raw = shorts.gemini_text(prompt, max_output_tokens=6500)
+    except Exception as exc:
+        message = str(exc)
+        if "429" in message or "RESOURCE_EXHAUSTED" in message or "quota" in message.lower():
+            raise RuntimeError(
+                "Gemini daily API quota is exhausted. No video was generated. "
+                "Wait until the quota reset shown in the Google error, then run the workflow again. "
+                "The storyboard has a local fallback, so it will not need another Gemini request."
+            ) from exc
+        raise
 
     def decode_json_response(text):
         text = text.strip()
@@ -57,7 +67,16 @@ def make_topic():
             "and newlines correctly. Do not add markdown fences or commentary.\n\n"
             + raw
         )
-        repaired = shorts.gemini_text(repair_prompt, max_output_tokens=6500)
+        try:
+            repaired = shorts.gemini_text(repair_prompt, max_output_tokens=6500)
+        except Exception as repair_exc:
+            message = str(repair_exc)
+            if "429" in message or "RESOURCE_EXHAUSTED" in message or "quota" in message.lower():
+                raise RuntimeError(
+                    "Gemini quota was exhausted during JSON repair. "
+                    "Wait for the quota reset, then rerun; no video was uploaded."
+                ) from repair_exc
+            raise
         try:
             data = decode_json_response(repaired)
         except json.JSONDecodeError as repair_error:
@@ -70,8 +89,24 @@ def make_topic():
     item = data[0]
     title, script = str(item.get("title", "")).strip(), str(item.get("script", "")).strip()
     count = len(script.split())
+    if count > 1100:
+        # Trim an overlong response locally instead of spending another API request.
+        kept, words_kept = [], 0
+        for sentence in re.split(r"(?<=[.!?])\\s+", script):
+            sentence_words = sentence.split()
+            if words_kept + len(sentence_words) > 1050:
+                break
+            kept.append(sentence)
+            words_kept += len(sentence_words)
+        if words_kept >= 850:
+            script = " ".join(kept).strip()
+            count = words_kept
+            print(f"Trimmed overlong Gemini script locally to {count} words.")
     if not title or not 850 <= count <= 1100:
-        raise RuntimeError(f"Long script length validation failed ({count} words); expected 850-1100.")
+        raise RuntimeError(
+            f"Long script length validation failed ({count} words); expected 850-1100. "
+            "No extra Gemini repair request was made."
+        )
     item["title"] = title[:95]
     item["script"] = script
     item["description"] = str(item.get("description", "")).strip()
