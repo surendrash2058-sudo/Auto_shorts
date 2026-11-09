@@ -5,6 +5,8 @@ import os
 import re
 import subprocess
 import sys
+import urllib.parse
+import urllib.request
 from pathlib import Path
 
 import auto_shorts as shorts
@@ -75,6 +77,96 @@ def validate_long_video(path):
     if not 270 <= duration <= 510:
         raise RuntimeError(f"Long video duration {duration:.1f}s is outside the 4.5-8.5 minute safety range.")
     print(f"Long video validation passed: 1920x1080, {duration/60:.1f} minutes, {path.stat().st_size:,} bytes.")
+
+
+def plan_long_scenes(scenes, title):
+    """Plan one specific landscape documentary shot for each narration beat."""
+    fallback = [{"query": shorts.simple_query(scene), "art": None} for scene in scenes]
+    if not os.environ.get("GEMINI_API_KEY"):
+        return fallback
+    listing = "\\n".join(f"{i + 1}. {scene}" for i, scene in enumerate(scenes))
+    prompt = (
+        f"Documentary title: {title}\\nNarration beats in exact order:\\n{listing}\\n\\n"
+        "For every beat return one unique stock-video search query of 4-7 concrete words. "
+        "Describe the visible subject AND action, not the abstract meaning. "
+        "Use real-world cinematic footage suitable for a 16:9 science documentary. "
+        "Avoid generic people, repeated queries, text overlays, and portrait-video concepts. "
+        "Keep every query tightly connected to its narration beat. "
+        "Return ONLY a JSON array like [{\\"query\\":\\"planet Earth rotating in deep space\\"}]."
+    )
+    try:
+        raw = shorts.gemini_text(prompt, max_output_tokens=5000)
+        if raw.startswith("```"):
+            raw = raw.split("\\n", 1)[1].rsplit("```", 1)[0]
+        data = json.loads(raw)
+        if not isinstance(data, list):
+            raise ValueError("Storyboard response was not a JSON array.")
+        for i in range(len(scenes)):
+            item = data[i] if i < len(data) and isinstance(data[i], dict) else {}
+            query = str(item.get("query") or fallback[i]["query"]).strip()
+            fallback[i]["query"] = query[:100]
+        print(f"Storyboard ready: {len(fallback)} specific landscape shot searches.")
+    except Exception as exc:
+        print("Detailed storyboard failed; using narration-derived search phrases:", exc)
+    return fallback
+
+
+def fetch_long_scene_videos(scenes, plan, slug):
+    """Fetch landscape-only footage; never stretch portrait Shorts footage into a long video."""
+    clips = []
+    pexels_key = os.environ.get("PEXELS_API_KEY")
+    pixabay_key = os.environ.get("PIXABAY_API_KEY")
+    for i, scene in enumerate(scenes):
+        query = (plan[i].get("query") or shorts.simple_query(scene) or scene)[:100]
+        path = OUT / f"{slug}_landscape_scene{i}.mp4"
+        clip = None
+        if pexels_key:
+            try:
+                params = urllib.parse.urlencode({"query": query, "orientation": "landscape", "per_page": 10})
+                data = shorts.http_json("https://api.pexels.com/videos/search?" + params,
+                                        {"Authorization": pexels_key, "User-Agent": "what-if-unlocked"})
+                choices = []
+                for video in data.get("videos", []):
+                    for item in video.get("video_files", []):
+                        w, h = item.get("width") or 0, item.get("height") or 0
+                        if item.get("file_type") == "video/mp4" and w >= h and w >= 1280:
+                            choices.append((w * h, item.get("link")))
+                choices = [x for x in choices if x[1]]
+                if choices:
+                    url = max(choices)[1]
+                    req = urllib.request.Request(url, headers={"User-Agent": "what-if-unlocked"})
+                    with urllib.request.urlopen(req, timeout=120) as response, open(path, "wb") as out:
+                        out.write(response.read())
+                    if path.stat().st_size > 10000:
+                        clip = str(path)
+            except Exception as exc:
+                print(f"  Pexels landscape search failed for shot {i + 1}: {exc}")
+        if not clip and pixabay_key:
+            try:
+                params = urllib.parse.urlencode({"key": pixabay_key, "q": query, "video_type": "film",
+                                                 "per_page": 12, "safesearch": "true"})
+                data = shorts.http_json("https://pixabay.com/api/videos/?" + params)
+                choices = []
+                for hit in data.get("hits", []):
+                    for size in ("large", "medium", "small"):
+                        item = hit.get("videos", {}).get(size, {})
+                        url = item.get("url")
+                        w, h = item.get("width") or 0, item.get("height") or 0
+                        if url and w >= h and w >= 1280:
+                            choices.append((w * h, url))
+                            break
+                if choices:
+                    url = max(choices)[1]
+                    req = urllib.request.Request(url, headers={"User-Agent": "what-if-unlocked"})
+                    with urllib.request.urlopen(req, timeout=120) as response, open(path, "wb") as out:
+                        out.write(response.read())
+                    if path.stat().st_size > 10000:
+                        clip = str(path)
+            except Exception as exc:
+                print(f"  Pixabay landscape search failed for shot {i + 1}: {exc}")
+        clips.append(clip)
+        print(f"  landscape footage {i + 1}/{len(scenes)} -> {query}: {'found' if clip else 'image fallback'}")
+    return clips
 
 
 def render_long_video(title, words, narration, output, clips, scenes, images):
@@ -164,7 +256,7 @@ def main():
     scenes, current = [], ""
     for sentence in sentences:
         current = (current + " " + sentence).strip()
-        if len(current.split()) >= 22:
+        if len(current.split()) >= 28:
             scenes.append(current)
             current = ""
     if current:
@@ -176,8 +268,8 @@ def main():
         scenes = shorts.split_scenes(item["script"], min_words=18, max_scenes=36)
     scenes = scenes[:42]
     print(f"2/4 Building a detailed storyboard with {len(scenes)} visual beats...")
-    plan = shorts.plan_scenes(scenes, item["title"])
-    clips = shorts.fetch_scene_videos(scenes, plan, slug)
+    plan = plan_long_scenes(scenes, item["title"])
+    clips = fetch_long_scene_videos(scenes, plan, slug)
     print("Downloading matching still-image fallbacks...")
     images = shorts.fetch_scene_visuals(scenes, plan, slug)
 
