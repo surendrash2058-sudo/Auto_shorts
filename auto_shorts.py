@@ -1359,10 +1359,10 @@ def plan_scenes(texts, title):
             if normalized in used_queries:
                 contextual_fallback = simple_query(texts[i], n=5) or query
                 query = contextual_fallback
-                normalized = re.sub(r"\\s+", " ", query.lower())
+                normalized = re.sub(r"\s+", " ", query.lower())
             if normalized in used_queries:
                 query = f"{query} distinct camera angle {i + 1}"
-                normalized = re.sub(r"\\s+", " ", query.lower())
+                normalized = re.sub(r"\s+", " ", query.lower())
             used_queries.add(normalized)
             plan[i] = {"query": query[:100],
                        "art": item.get("art") if isinstance(item.get("art"), dict) else None}
