@@ -1,7 +1,6 @@
 """Generate and publish one 5-8 minute 16:9 What If documentary video."""
 import asyncio
 import json
-import hashlib
 import os
 import re
 import subprocess
@@ -265,7 +264,7 @@ def fetch_long_scene_videos(scenes, plan, slug):
             except Exception as exc:
                 print(f"  Pixabay landscape search failed for shot {i + 1}: {exc}")
         if clip:
-            digest = hashlib.sha256(Path(clip).read_bytes()).hexdigest()
+            digest = shorts.file_fingerprint(clip)
             if digest in used_clip_hashes:
                 print(f"  repeated landscape clip rejected for beat {i + 1}: {query}")
                 Path(clip).unlink(missing_ok=True)
