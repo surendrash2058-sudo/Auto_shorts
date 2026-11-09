@@ -1266,7 +1266,7 @@ def split_visual_pairs(script):
 
 def visual_context_pairs(script, context_words=5):
     """Keep a two-word anchor for every shot, with nearby narration for meaning."""
-    tokens = re.findall(r"\\S+", script.strip())
+    tokens = re.findall(r"\S+", script.strip())
     beats = []
     for i in range(0, len(tokens), 2):
         pair = " ".join(tokens[i:i + 2]).strip()
