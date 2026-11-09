@@ -1,0 +1,69 @@
+name: Weekly What-If Long Video
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Monday, Wednesday and Friday, 6:37 PM US Eastern Standard Time.
+    # UTC scheduling shifts by one hour during US daylight saving time.
+    - cron: "37 23 * * 1,3,5"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: weekly-what-if-long-video
+  cancel-in-progress: false
+
+jobs:
+  generate-and-upload:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install FFmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+
+      - name: Generate and upload one long video
+        env:
+          YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+          YOUTUBE_TOKEN_JSON: ${{ secrets.YOUTUBE_TOKEN_JSON }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+          PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
+          PRIVACY: public
+        run: python long_video.py
+
+      - name: Persist long-video topic history
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add long_topics.json
+          if ! git diff --cached --quiet; then
+            git commit -m "Record completed long-form What If video"
+            git pull --rebase origin main
+            git push
+          fi
+
+      - name: Upload generated video as workflow artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: what-if-long-video
+          path: output/*_long.mp4
+          if-no-files-found: ignore
+          retention-days: 7
