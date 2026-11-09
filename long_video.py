@@ -86,22 +86,28 @@ def render_long_video(title, words, narration, output, clips, scenes, images):
     cmd = ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error"]
     for i, scene in enumerate(scenes):
         clip = clips[i] if clips and i < len(clips) else None
+        is_still = False
         if clip:
             cmd += ["-stream_loop", "-1", "-i", str(clip)]
         elif images and i < len(images) and images[i] is not None:
             image_path = OUT / f"long_fallback_{i}.jpg"
             images[i].save(image_path, quality=92)
             cmd += ["-loop", "1", "-framerate", str(FPS), "-t", f"{durations[i]:.3f}", "-i", str(image_path)]
+            is_still = True
         else:
             # A restrained topic-neutral background is preferable to unrelated stock footage.
             image_path = OUT / f"long_blank_{i}.jpg"
             from PIL import Image
             Image.new("RGB", (WIDTH, HEIGHT), (8, 14, 28)).save(image_path, quality=90)
             cmd += ["-loop", "1", "-framerate", str(FPS), "-t", f"{durations[i]:.3f}", "-i", str(image_path)]
+        motion = (
+            f",zoompan=z='min(zoom+0.00045,1.08)':d=1:s={WIDTH}x{HEIGHT}:fps={FPS}"
+            if is_still else ""
+        )
         filters.append(
             f"[{i}:v]trim=duration={durations[i]:.3f},setpts=PTS-STARTPTS,"
             f"scale={WIDTH}:{HEIGHT}:force_original_aspect_ratio=increase,"
-            f"crop={WIDTH}:{HEIGHT},setsar=1,fps={FPS},format=yuv420p[v{i}]"
+            f"crop={WIDTH}:{HEIGHT},setsar=1,fps={FPS}{motion},format=yuv420p[v{i}]"
         )
         labels.append(f"[v{i}]")
 
@@ -154,7 +160,7 @@ def main():
     words = asyncio.run(shorts.make_voice(item["script"], audio))
     # Short visual beats prevent one stock clip from sitting on screen for 20-30 seconds.
     # Each beat stays in narration order and is roughly 20-30 spoken words.
-    sentences = [x.strip() for x in re.split(r"(?<=[.!?])\\s+", item["script"]) if x.strip()]
+    sentences = [x.strip() for x in re.split(r"(?<=[.!?])\s+", item["script"]) if x.strip()]
     scenes, current = [], ""
     for sentence in sentences:
         current = (current + " " + sentence).strip()
