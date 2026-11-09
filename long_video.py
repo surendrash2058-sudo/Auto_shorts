@@ -5,6 +5,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 import urllib.parse
 import urllib.request
 from pathlib import Path
@@ -16,6 +17,45 @@ OUT = ROOT / "output"
 TOPICS = ROOT / "long_topics.json"
 WIDTH, HEIGHT, FPS = 1920, 1080, 30
 TRANSITION = 0.35
+
+
+def gemini_text_with_retry(prompt, max_output_tokens):
+    """Retry temporary Gemini outages without wasting retries on exhausted quota."""
+    for attempt in range(4):
+        try:
+            return shorts.gemini_text(prompt, max_output_tokens=max_output_tokens)
+        except Exception as exc:
+            message = str(exc)
+            lowered = message.lower()
+            quota_error = (
+                "resource_exhausted" in lowered
+                or "quota" in lowered
+                or ("429" in message and "rate" not in lowered)
+            )
+            if quota_error:
+                raise RuntimeError(
+                    "Gemini API quota/rate limit was reached. Stop here and wait for "
+                    "the reset time shown by Google before running the workflow again."
+                ) from exc
+
+            temporary_error = any(
+                marker in lowered
+                for marker in (
+                    "503", "unavailable", "high demand", "overloaded",
+                    "502", "504", "500", "internal error",
+                    "connection reset", "timed out", "timeout",
+                    "temporarily unavailable",
+                )
+            )
+            if not temporary_error or attempt == 3:
+                raise
+
+            delay = 15 * (2 ** attempt)
+            print(
+                f"Gemini temporary service error (attempt {attempt + 1}/4). "
+                f"Retrying in {delay} seconds..."
+            )
+            time.sleep(delay)
 
 
 def make_topic():
@@ -39,7 +79,7 @@ def make_topic():
         "Tags should be 8-12 relevant plain strings."
     )
     try:
-        raw = shorts.gemini_text(prompt, max_output_tokens=6500)
+        raw = gemini_text_with_retry(prompt, max_output_tokens=6500)
     except Exception as exc:
         message = str(exc)
         if "429" in message or "RESOURCE_EXHAUSTED" in message or "quota" in message.lower():
@@ -68,7 +108,7 @@ def make_topic():
             + raw
         )
         try:
-            repaired = shorts.gemini_text(repair_prompt, max_output_tokens=6500)
+            repaired = gemini_text_with_retry(repair_prompt, max_output_tokens=6500)
         except Exception as repair_exc:
             message = str(repair_exc)
             if "429" in message or "RESOURCE_EXHAUSTED" in message or "quota" in message.lower():
@@ -153,7 +193,7 @@ def plan_long_scenes(scenes, title):
         "Return ONLY a JSON array like [{\"query\":\"planet Earth rotating in deep space\"}]."
     )
     try:
-        raw = shorts.gemini_text(prompt, max_output_tokens=5000)
+        raw = gemini_text_with_retry(prompt, max_output_tokens=5000)
         if raw.startswith("```"):
             raw = raw.split("\n", 1)[1].rsplit("```", 1)[0]
         data = json.loads(raw)
