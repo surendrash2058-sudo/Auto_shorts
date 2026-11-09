@@ -84,20 +84,20 @@ def plan_long_scenes(scenes, title):
     fallback = [{"query": shorts.simple_query(scene), "art": None} for scene in scenes]
     if not os.environ.get("GEMINI_API_KEY"):
         return fallback
-    listing = "\\n".join(f"{i + 1}. {scene}" for i, scene in enumerate(scenes))
+    listing = "\n".join(f"{i + 1}. {scene}" for i, scene in enumerate(scenes))
     prompt = (
-        f"Documentary title: {title}\\nNarration beats in exact order:\\n{listing}\\n\\n"
+        f"Documentary title: {title}\nNarration beats in exact order:\n{listing}\n\n"
         "For every beat return one unique stock-video search query of 4-7 concrete words. "
         "Describe the visible subject AND action, not the abstract meaning. "
         "Use real-world cinematic footage suitable for a 16:9 science documentary. "
         "Avoid generic people, repeated queries, text overlays, and portrait-video concepts. "
         "Keep every query tightly connected to its narration beat. "
-        "Return ONLY a JSON array like [{\\"query\\":\\"planet Earth rotating in deep space\\"}]."
+        "Return ONLY a JSON array like [{\"query\":\"planet Earth rotating in deep space\"}]."
     )
     try:
         raw = shorts.gemini_text(prompt, max_output_tokens=5000)
         if raw.startswith("```"):
-            raw = raw.split("\\n", 1)[1].rsplit("```", 1)[0]
+            raw = raw.split("\n", 1)[1].rsplit("```", 1)[0]
         data = json.loads(raw)
         if not isinstance(data, list):
             raise ValueError("Storyboard response was not a JSON array.")
