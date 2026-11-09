@@ -169,6 +169,33 @@ def fetch_long_scene_videos(scenes, plan, slug):
     return clips
 
 
+def srt_timestamp(seconds):
+    millis = max(0, int(round(seconds * 1000)))
+    hours, millis = divmod(millis, 3_600_000)
+    minutes, millis = divmod(millis, 60_000)
+    secs, millis = divmod(millis, 1000)
+    return f"{hours:02}:{minutes:02}:{secs:02},{millis:03}"
+
+
+def write_captions(words, path, words_per_line=5):
+    """Create tightly timed, readable subtitles from Edge TTS word timings."""
+    lines = []
+    for start_index in range(0, len(words), words_per_line):
+        group = words[start_index:start_index + words_per_line]
+        if not group:
+            continue
+        start = max(0.0, float(group[0][1]))
+        end = max(start + 0.45, float(group[-1][1]) + float(group[-1][2]))
+        caption = " ".join(str(item[0]).replace("\\n", " ").strip() for item in group).strip()
+        if caption:
+            lines.append((start, end, caption))
+    with open(path, "w", encoding="utf-8-sig") as handle:
+        for index, (start, end, caption) in enumerate(lines, 1):
+            handle.write(f"{index}\\n{srt_timestamp(start)} --> {srt_timestamp(end)}\\n{caption}\\n\\n")
+    print(f"Created timed captions: {len(lines)} subtitle cues.")
+    return path
+
+
 def render_long_video(title, words, narration, output, clips, scenes, images):
     total = words[-1][1] + words[-1][2] + 1.0
     weights = [max(1, len(x.split())) for x in scenes]
@@ -217,6 +244,14 @@ def render_long_video(title, words, narration, output, clips, scenes, images):
             previous = nxt
         final_label = previous
     filters.append(f"{final_label}null[outv]")
+    caption_file = output.with_suffix(".srt")
+    write_captions(words, caption_file)
+    caption_path = str(caption_file.resolve()).replace("\\\\", "/").replace(":", "\\\\:")
+    filters.append(
+        f"[outv]subtitles='{caption_path}':force_style='FontName=DejaVu Sans,"
+        "FontSize=26,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,"
+        "BorderStyle=1,Outline=2,Shadow=1,Alignment=2,MarginV=48'[captioned]"
+    )
 
     narration_index = len(scenes)
     cmd += ["-i", str(narration)]
@@ -232,7 +267,7 @@ def render_long_video(title, words, narration, output, clips, scenes, images):
         filters.append(f"[{narration_index}:a]loudnorm=I=-16:TP=-1.5:LRA=11[aout]")
         audio_map = "[aout]"
 
-    cmd += ["-filter_complex", ";".join(filters), "-map", "[outv]", "-map", audio_map,
+    cmd += ["-filter_complex", ";".join(filters), "-map", "[captioned]", "-map", audio_map,
             "-t", f"{total:.3f}", "-c:v", "libx264", "-preset", "veryfast", "-crf", "21",
             "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart",
             str(output)]
