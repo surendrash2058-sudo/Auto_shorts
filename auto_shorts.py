@@ -19,6 +19,7 @@ import random
 import re
 import time
 import html
+import hashlib
 import subprocess
 import sys
 import urllib.parse
@@ -1262,6 +1263,36 @@ def split_visual_pairs(script):
     return [" ".join(tokens[i:i + 2]).strip() for i in range(0, len(tokens), 2) if tokens[i:i + 2]]
 
 
+
+def visual_context_pairs(script, context_words=5):
+    """Keep a two-word anchor for every shot, with nearby narration for meaning."""
+    tokens = re.findall(r"\\S+", script.strip())
+    beats = []
+    for i in range(0, len(tokens), 2):
+        pair = " ".join(tokens[i:i + 2]).strip()
+        if not pair:
+            continue
+        left = max(0, i - context_words)
+        right = min(len(tokens), i + 2 + context_words)
+        context = " ".join(tokens[left:right])
+        beats.append(f"Exact spoken words: {pair}. Full visual context: {context}")
+    return beats
+
+
+def file_fingerprint(path):
+    digest = hashlib.sha256()
+    with open(path, "rb") as source:
+        for chunk in iter(lambda: source.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def image_fingerprint(image):
+    thumb = image.convert("RGB").resize((32, 32))
+    return hashlib.sha256(thumb.tobytes()).hexdigest()
+
+
+
 def download(url, path, headers=None, timeout=150):
     req = urllib.request.Request(url, headers=headers or {"User-Agent": "auto-shorts"})
     with urllib.request.urlopen(req, timeout=timeout) as r, open(path, "wb") as f:
@@ -1298,14 +1329,14 @@ def cat_query(scene_text, title=""):
 # ---------- scene planning (Gemini) + drawn illustrations ----------
 def plan_scenes(texts, title):
     """Create photo search phrases and optional drawings with Gemini."""
-    plan = [{"query": cat_query(t, title), "art": None} for t in texts]
+    plan = [{"query": simple_query(t) or t[:90], "art": None} for t in texts]
     if not os.environ.get("GEMINI_API_KEY"):
         return plan
     try:
         listing = "\n".join(f"{i + 1}. {t}" for i, t in enumerate(texts))
         prompt = (
             f"Video title: {title}\nVoiceover visual beats in exact order (each beat is exactly two consecutive spoken words):\n{listing}\n\n"
-            "For EACH two-word beat, create a concrete visual that directly depicts those words in the context of the title and surrounding story. Do not use merely related general-topic footage. If the pair contains a pronoun or helper word, infer its actual referent/action from nearby narration. Never use generic filler footage. For EACH beat give:\n"
+            "Each item contains an exact two-word audio anchor plus nearby narration context. Use the context to understand pronouns, grammar, and the real event. Create a different, literal shot for EACH item that depicts the exact event being narrated at that moment. Never use a broad topic image, generic filler, or the same subject/composition for consecutive beats. The two anchor words must be visibly represented through their contextual meaning. Return a distinct query for every item. For EACH beat give:\n"
             '- "query": 3-5 plain English words to find a REAL MOVING VIDEO CLIP showing the exact action or subject '
             "(examples: 'earth rotating in space', 'city traffic time lapse', 'cracked dry earth close up', "
             "'solar flare erupting from sun'). Prefer concrete visible actions, environments, and camera subjects; "
@@ -1464,6 +1495,7 @@ def fetch_nasa_photo(query, path, pick=0):
 def fetch_scene_visuals(scenes, plan, slug):
     """One realistic picture per scene. AI photo -> Pixabay -> NASA photo. None = use an animation."""
     imgs, how, poll_ok = [], [], True
+    used_visuals = set()
     for i, text in enumerate(scenes):
         q = plan[i]["query"] or simple_query(text)
         path = OUT / f"{slug}_scene{i}.jpg"
@@ -1491,8 +1523,23 @@ def fetch_scene_visuals(scenes, plan, slug):
                 img, src = render_art(plan[i]["art"]), "drawn illustration"
             except Exception as e:
                 print("   drawing failed:", e)
+        if img is not None:
+            fingerprint = image_fingerprint(img)
+            if fingerprint in used_visuals:
+                print(f"   duplicate picture rejected for beat {i + 1}; trying a unique illustration/fallback")
+                img, src = None, None
+                if plan[i].get("art"):
+                    try:
+                        candidate = render_art(plan[i]["art"])
+                        candidate_hash = image_fingerprint(candidate)
+                        if candidate_hash not in used_visuals:
+                            img, src = candidate, "unique drawn illustration"
+                    except Exception as e:
+                        print("   unique illustration failed:", e)
+            if img is not None:
+                used_visuals.add(image_fingerprint(img))
         imgs.append(img)
-        how.append(src or "built-in animation")
+        how.append(src or "unique fallback required")
         print(f"  scene {i + 1}/{len(scenes)} [{q}] -> {how[-1]}")
     if not any(imgs):
         print("WARNING: no real pictures could be downloaded (check internet). Using built-in animations.")
@@ -1575,6 +1622,7 @@ def fetch_pixabay_clip(keywords, out_path):
 def fetch_scene_videos(scenes, plan, slug):
     """Get a separate scene-matched stock video, preferring Pexels then Pixabay."""
     clips = []
+    used_clips = set()
     if not os.environ.get("PEXELS_API_KEY") and not os.environ.get("PIXABAY_API_KEY"):
         print("No stock video API key is configured; using image/animation fallbacks.")
         return None
@@ -1585,8 +1633,16 @@ def fetch_scene_videos(scenes, plan, slug):
         if not clip and os.environ.get("PIXABAY_API_KEY"):
             clip = fetch_pixabay_clip(query, path)
         if clip:
+            fingerprint = file_fingerprint(clip)
+            if fingerprint in used_clips:
+                print(f"  repeated stock clip rejected for beat {i + 1}: {query}")
+                Path(clip).unlink(missing_ok=True)
+                clip = None
+            else:
+                used_clips.add(fingerprint)
+        if clip:
             clips.append(str(clip))
-            print(f"  scene video {i + 1}/{len(scenes)} -> {query}")
+            print(f"  unique scene video {i + 1}/{len(scenes)} -> {query}")
         else:
             clips.append(None)
     return clips if any(clips) else None
@@ -1711,12 +1767,13 @@ def main():
     kw = todo.get("keywords") or todo["title"].replace("What if", "").strip(" ?")
     mode = os.environ.get("VISUALS", "auto")   # 3d (default, free) | auto (real photos) | anim | images | stock | plain
     scene_texts = split_visual_pairs(todo["script"])
+    scene_contexts = visual_context_pairs(todo["script"])
     scene_imgs, scene_anims, clip, is3d = None, None, None, False
     plan = None
     scene_videos = None
     if mode in ("auto", "images", "stock"):
-        print("Planning visuals for each scene...")
-        plan = plan_scenes(scene_texts, todo["title"])
+        print("Planning unique, narration-context visuals for every two-word beat...")
+        plan = plan_scenes(scene_contexts, todo["title"])
     if mode in ("auto", "stock"):
         print("Finding real moving footage for each scene...")
         scene_videos = fetch_scene_videos(scene_texts, plan, slug)
