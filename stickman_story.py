@@ -2,7 +2,7 @@
 """
 stickman_story.py
 Create an original 40–60 second cinematic 2D-cartoon-human Short script with
-Gemini. This is the first stage of the stickman video pipeline.
+Gemini. This is the first stage of the cinematic cartoon-human video pipeline.
 
 Usage:
   python stickman_story.py
@@ -45,7 +45,7 @@ def fallback_story(topic: str | None = None) -> dict:
     narration = (
         "Imagine letting go of your phone… and watching it float away. "
         "If Earth suddenly lost gravity, people, cars, and oceans would start drifting upward. "
-        "Our colorful stickman, Pip, grabs a streetlamp as everything around him lifts off. "
+        "Pip, our cartoon adventurer, grabs a streetlamp as everything around him lifts off. "
         "But the danger gets worse. Earth's atmosphere would no longer stay in place, "
         "and breathing could become impossible. The planet would not feel like a giant playground for long. "
         "Without gravity holding things together, life as we know it would collapse. "
