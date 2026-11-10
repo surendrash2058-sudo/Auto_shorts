@@ -107,9 +107,20 @@ VISUAL RULES:
   expressive black eyes, bright teal scarf. Never change body proportions or outfit.
 - Supporting stickmen may appear, but give each a consistent simple color accessory.
 - Colorful cartoon 2D style, clean thick outlines, readable silhouettes, vivid backgrounds.
-- Every scene must describe a visible physical action, not just an abstract idea.
+- Every scene must communicate its meaning to a viewer who CANNOT hear the audio.
+- Silent-viewing rule: a deaf viewer must understand the main event by watching alone.
+  Never rely on narration, sound effects, music, or spoken explanation to explain the plot.
+- Show a clear visual cause -> action -> result. Use large recognizable objects, unmistakable
+  gestures, expressive reactions, and visible consequences. Show the important object moving,
+  changing, breaking, rising, falling, disappearing, or affecting Pip.
+- One main action per scene. Avoid abstract symbols unless paired with a literal physical example.
+  Avoid tiny details, clutter, vague standing poses, and unrelated decorative shots.
+- Keep Pip visible in every scene when practical; preserve his exact white body and teal scarf.
+  Supporting characters must visibly react to the same event.
 - Make 7–9 scenes. Scene narration chunks must appear in order and together match
-  the full narration closely. Each scene should be about 4–8 seconds.
+  the full narration closely. Each scene should be about 4–8 seconds, with enough time
+  to see the action and its consequence.
+- Use visual continuity: the result of one scene should lead naturally into the next.
 - Vertical 9:16 composition; keep faces and important action near the center safe area.
 
 Return ONLY valid JSON in this exact structure:
