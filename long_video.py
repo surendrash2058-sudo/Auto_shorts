@@ -16,7 +16,7 @@ ROOT = Path(__file__).parent
 OUT = ROOT / "output"
 TOPICS = ROOT / "long_topics.json"
 WIDTH, HEIGHT, FPS = 1920, 1080, 30
-TRANSITION = 0.35
+TRANSITION = 0.45
 
 
 def gemini_text_with_retry(prompt, max_output_tokens):
@@ -104,11 +104,14 @@ def make_topic():
         "Avoid topics in this recent history: " + previous + ". "
         "Return ONLY a JSON array containing one object with title, script, description, tags. "
         "The script must be 900-1000 spoken words, natural American English for a warm, expressive male narrator. "
-        "Structure: immediate 10-second hook; explain the premise; consequences in a clear timeline; "
-        "real scientific reasoning and uncertainty; escalating stakes; satisfying conclusion. "
+        "Write it as a premium cinematic science documentary with an expressive, measured male narrator. "
+        "Structure: immediate visual 10-second hook; establish the premise; consequences in a clear timeline; "
+        "real scientific reasoning and uncertainty; escalating stakes; one powerful turning point; "
+        "and a satisfying, thought-provoking conclusion. "
         "Every 20-30 seconds introduce a fresh question, surprising consequence, concrete reveal, "
-        "or change in scale to renew curiosity. Use open loops and resolve them later. "
-        "Write vivid visual details that can be shown on screen. Avoid long abstract explanations. "
+        "or change in scale to renew curiosity. Open loops early and resolve them later. "
+        "Write vivid, filmable details for every section so the visuals can show what the narration describes. "
+        "Vary sentence length and allow brief dramatic pauses through punctuation; avoid long abstract explanations. "
         "Use short speakable sentences, contractions naturally, no stage directions, no fake statistics, "
         "no unsupported claims, and no repeated filler. End with a brief natural subscribe invitation. "
         "Title should be compelling, accurate, under 90 characters. Description 2-3 sentences. "
@@ -217,9 +220,11 @@ def plan_long_scenes(scenes, title):
         f"Documentary title: {title}\nNarration beats in exact order:\n{listing}\n\n"
         "For every beat return one distinct stock-video search query of 4-7 concrete words, using the complete narration beat to identify the exact visible event. "
         "Describe the visible subject AND action, not the abstract meaning. "
-        "Use real-world cinematic footage suitable for a 16:9 science documentary. "
+        "Build premium 16:9 documentary B-roll: vary wide establishing shots, aerials, macro details, "
+        "dramatic close-ups, scientific instruments, and smooth tracking movement. "
+        "Use cinematic natural light, atmospheric depth, realistic scale, and scientifically plausible imagery. "
         "Avoid generic people, repeated queries, repeated subjects/compositions, text overlays, and portrait-video concepts. "
-        "Keep every query tightly connected to its narration beat. Queries must be unique and must describe a different visible shot from the previous beat. "
+        "Keep every query tightly connected to its narration beat. Queries must be unique and describe a different camera setup from the previous beat. "
         "Return ONLY a JSON array like [{\"query\":\"planet Earth rotating in deep space\"}]."
     )
     try:
@@ -387,7 +392,7 @@ def render_long_video(title, words, narration, output, clips, scenes, images):
             nxt = f"[xf{i}]"
             offset = sum(durations[:i]) - TRANSITION * i
             filters.append(
-                f"{previous}{labels[i]}xfade=transition=fade:duration={TRANSITION}:"
+                f"{previous}{labels[i]}xfade=transition={'smoothleft' if i % 2 else 'fade'}:duration={TRANSITION}:"
                 f"offset={offset:.3f}{nxt}"
             )
             previous = nxt
@@ -400,7 +405,7 @@ def render_long_video(title, words, narration, output, clips, scenes, images):
     # parsing issues across runner versions.
     filters.append(
         f"[outv]subtitles='{caption_path}':force_style='FontName=DejaVu Sans,"
-        "FontSize=26,Outline=2,Shadow=1,Alignment=2,MarginV=48'[captioned]"
+        "FontSize=30,Outline=3,Shadow=1,Alignment=2,MarginV=54'[captioned]"
     )
 
     narration_index = len(scenes)
