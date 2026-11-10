@@ -514,16 +514,83 @@ def anim_city(cv, d, t, p, txt, i):
         x += w + 8
 
 
+
+def anim_stickman(cv, d, t, p, txt, i):
+    """Colorful story scene with recurring Pip: white stickman and teal scarf."""
+    text = txt.lower()
+    if has(text, r"space|planet|earth|moon|gravity|float|orbit|star|sky"):
+        top, bot, ground = (8, 15, 55), (62, 42, 125), (28, 45, 100)
+    elif has(text, r"ocean|water|sea|wave|flood|rain"):
+        top, bot, ground = (35, 150, 205), (5, 45, 120), (15, 80, 155)
+    elif has(text, r"fire|hot|burn|heat|volcano|lava"):
+        top, bot, ground = (65, 12, 25), (180, 55, 15), (75, 30, 25)
+    elif has(text, r"ice|cold|snow|freeze"):
+        top, bot, ground = (145, 210, 245), (55, 115, 190), (215, 238, 250)
+    else:
+        top, bot, ground = (255, 165, 90), (110, 70, 165), (65, 125, 85)
+    for y in range(GH):
+        col = tuple(int(top[k] + (bot[k]-top[k]) * y / GH) for k in range(3))
+        d.line((0, y, GW, y), fill=col)
+    if has(text, r"space|planet|earth|moon|gravity|float|orbit|star|sky"):
+        for a, b, cc, e in rv(("pipstars", i), 48):
+            x, yy = a * GW, (b * GH - t * (8 + cc * 10)) % GH
+            d.ellipse([x-2, yy-2, x+2, yy+2], fill=(255, 255, 220))
+    if has(text, r"ocean|water|sea|wave|flood|rain"):
+        for k in range(3):
+            yy = 850 + k * 95
+            pts = [(x, yy + 18 * math.sin(x / 60 + t * (1.3+k*.2))) for x in range(0, GW+20, 20)]
+            d.polygon(pts + [(GW, GH), (0, GH)], fill=(35, 125-k*20, 205-k*20))
+    elif has(text, r"ice|cold|snow|freeze"):
+        d.rectangle([0, 1030, GW, GH], fill=(220, 240, 252))
+    else:
+        d.rectangle([0, 1040, GW, GH], fill=ground)
+    if has(text, r"phone|screen|message|call"):
+        d.rounded_rectangle([485, 700, 565, 850], radius=12, fill=(25, 30, 45), outline=(230,240,255), width=5)
+        d.rectangle([495, 720, 555, 810], fill=(80, 190, 230))
+    if has(text, r"sun|sunlight|bright"):
+        glow(cv, 570, 260, 95, (255, 210, 70), .8)
+        d.ellipse([520, 210, 620, 310], fill=(255, 220, 75))
+    if has(text, r"earth|planet|world|moon"):
+        put(cv, sphere_sprite(78, (40, 125, 220)), 540, 440)
+    floating = has(text, r"float|gravity|drift|space|rise|upward")
+    running = has(text, r"run|chase|escape|rush|race")
+    scared = has(text, r"danger|scared|panic|dangerous|collapse|crash")
+    jumping = has(text, r"jump|leap|launch|fly")
+    phase = t * (5.0 if running else 2.4)
+    x = 345 + (115 * math.sin(phase) if running else 42 * math.sin(t * 1.1))
+    bob = 30 * abs(math.sin(phase)) if jumping or running else 12 * math.sin(t * 2.5)
+    y = 1015 - bob - (min(420, p * 520) if floating else 0)
+    limb = (22, 24, 35)
+    leg_swing = 32 * math.sin(phase) if running else 8 * math.sin(t * 2)
+    hip_y = y - 118
+    d.line([(x, hip_y), (x-28-leg_swing, y)], fill=limb, width=13)
+    d.line([(x, hip_y), (x+28+leg_swing, y)], fill=limb, width=13)
+    shoulder_y = y - 205
+    arm_raise = 42 if scared or jumping or floating else 0
+    d.line([(x, shoulder_y), (x-55, shoulder_y+55-arm_raise)], fill=limb, width=12)
+    d.line([(x, shoulder_y), (x+55, shoulder_y+55-arm_raise)], fill=limb, width=12)
+    d.line([(x, y-205), (x, hip_y)], fill=limb, width=15)
+    d.polygon([(x-18, y-195), (x+35, y-190), (x+80+12*math.sin(t*4), y-165),
+               (x+25, y-170), (x-22, y-175)], fill=(20, 210, 190))
+    d.ellipse([x-46, y-355, x+46, y-263], fill=(20,24,35))
+    d.ellipse([x-42, y-351, x+42, y-267], fill=(255,255,255))
+    d.ellipse([x-17, y-320, x-7, y-307], fill=(20,24,35))
+    d.ellipse([x+7, y-320, x+17, y-307], fill=(20,24,35))
+    if scared:
+        d.ellipse([x-8, y-288, x+8, y-272], fill=(35,25,35))
+    else:
+        d.arc([x-14, y-298, x+14, y-278], 10, 170, fill=(30,25,35), width=4)
+
 ANIMS = {"cosmos": anim_cosmos, "sun": anim_sun, "earth": anim_earth, "moon": anim_moon,
          "black_hole": anim_black_hole, "ocean": anim_ocean, "ice": anim_ice, "fire": anim_fire,
          "network": anim_network, "brain": anim_brain, "gravity": anim_gravity, "crowd": anim_crowd,
-         "clock": anim_clock, "city": anim_city}
+         "clock": anim_clock, "city": anim_city, "stickman": anim_stickman}
 
 ANIM_BG = {"cosmos": ((8, 6, 30), (40, 20, 80)), "sun": ((5, 8, 25), (35, 12, 55)), "earth": ((4, 6, 24), (14, 20, 60)),
            "moon": ((6, 8, 30), (14, 24, 70)), "black_hole": ((2, 2, 10), (24, 8, 40)), "ocean": ((120, 190, 235), (25, 70, 140)),
            "ice": ((190, 230, 252), (90, 150, 215)), "fire": ((25, 0, 0), (110, 30, 0)), "network": ((5, 14, 36), (10, 44, 78)),
            "brain": ((10, 8, 40), (34, 12, 66)), "gravity": ((25, 35, 80), (90, 140, 200)), "crowd": ((10, 6, 36), (50, 20, 90)),
-           "clock": ((12, 16, 46), (44, 30, 96)), "city": ((8, 8, 36), (50, 34, 84))}
+           "clock": ((12, 16, 46), (44, 30, 96)), "city": ((8, 8, 36), (50, 34, 84)), "stickman": ((8, 15, 55), (62, 42, 125))}
 ANIM_BG["ocean"] = ((120, 190, 235), (25, 70, 140))
 
 ANIM_RULES = [
@@ -1899,6 +1966,14 @@ def main():
         a.privacy = os.environ.get("PRIVACY", a.privacy)
 
     topics = json.loads(TOPICS.read_text(encoding="utf-8"))
+    stickman_story = None
+    if os.environ.get("VISUALS", "").lower() == "stickman":
+        from stickman_story import generate as generate_stickman_story
+        stickman_story = generate_stickman_story(os.environ.get("STICKMAN_TOPIC") or None)
+        todo = {"title": stickman_story["title"], "script": stickman_story["narration"],
+                "keywords": "colorful cartoon stickman story", "tags": ["stickman", "what if", "animation"]}
+    else:
+        todo = None
     if a.list:
         for i, t in enumerate(topics):
             print(("[x] " if t.get("done") else "[ ] ") + t["title"])
@@ -1909,7 +1984,8 @@ def main():
             topics = add_topics(topics, 1, trends, front=True)
         topics = refill(topics)
         TOPICS.write_text(json.dumps(topics, indent=2, ensure_ascii=False), encoding="utf-8")
-    todo = next((t for t in topics if not t.get("done")), None)
+    if todo is None:
+        todo = next((t for t in topics if not t.get("done")), None)
     if not todo:
         print("No topics left. Add more to topics.json")
         return
@@ -1924,9 +2000,27 @@ def main():
     mode = os.environ.get("VISUALS", "auto")   # 3d (default, free) | auto (real photos) | anim | images | stock | plain
     scene_texts = split_visual_pairs(todo["script"])
     scene_contexts = visual_context_pairs(todo["script"])
+    if stickman_story:
+        story_scenes = stickman_story.get("scenes", [])
+        cumulative, limits = 0, []
+        for item in story_scenes:
+            cumulative += max(1, len(str(item.get("narration", "")).split()))
+            limits.append(cumulative)
+        enriched = []
+        for j, beat in enumerate(scene_contexts):
+            word_pos = j * 2 + 1
+            scene_index = next((k for k, limit in enumerate(limits) if word_pos <= limit), len(story_scenes)-1)
+            spec = story_scenes[max(0, scene_index)] if story_scenes else {}
+            enriched.append(beat + ". Scene: " + str(spec.get("visual", "")) +
+                            ". Action: " + str(spec.get("action", "")) +
+                            ". Emotion: " + str(spec.get("emotion", "")))
+        scene_contexts = enriched
     scene_imgs, scene_anims, clip, is3d = None, None, None, False
     plan = None
     scene_videos = None
+    if mode == "stickman":
+        scene_anims = ["stickman"] * len(scene_texts)
+        print(f"Stickman story ready: {len(stickman_story.get('scenes', []))} story scenes; recurring character Pip.")
     if mode in ("auto", "images", "stock"):
         print("Planning unique, narration-context visuals for every two-word beat...")
         plan = plan_scenes(scene_contexts, todo["title"])
