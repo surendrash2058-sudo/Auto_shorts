@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 stickman_story.py
-Create an original 40–60 second colorful-cartoon stickman Short script with
+Create an original 40–60 second cinematic 2D-cartoon-human Short script with
 Gemini. This is the first stage of the stickman video pipeline.
 
 Usage:
@@ -66,7 +66,7 @@ def fallback_story(topic: str | None = None) -> dict:
             "scene": i,
             "narration": visual + ".",
             "visual": visual,
-            "action": "clear readable full-body stickman movement",
+            "action": "clear readable full-body cartoon-human movement",
             "emotion": emotion,
             "camera": "medium shot",
         })
@@ -75,10 +75,10 @@ def fallback_story(topic: str | None = None) -> dict:
         "hook": "Imagine letting go of your phone… and watching it float away.",
         "narration": narration,
         "characters": [
-            {"id": "pip", "name": "Pip", "description": "small friendly white stickman, round white head, simple black outline, bright teal scarf, expressive black eyes; keep this design identical in every scene"},
+            {"id": "pip", "name": "Pip", "description": "original young adult 2D cartoon human named Pip, warm medium skin, expressive large brown eyes, short tousled dark-brown hair, teal hoodie, charcoal trousers and white sneakers; preserve the exact face, hair, outfit, proportions and colors in every scene"},
         ],
         "scenes": scenes,
-        "visual_style": "colorful 2D cartoon stickman animation, bold clean outlines, bright simple backgrounds, expressive poses, playful but cinematic lighting",
+        "visual_style": "detailed expressive 2D cartoon human character composited over photorealistic cinematic 3D environments, clean bold outlines, polished cel shading, consistent face and outfit, dramatic realistic lighting",
         "music_mood": "playful curiosity that builds into suspense",
         "sound_effects": ["soft pop", "cartoon whoosh", "rising wind", "dramatic impact"],
         "ending_question": "Would you enjoy floating for one minute?",
@@ -91,7 +91,7 @@ def build_prompt(topic: str | None) -> str:
     )
     return f"""
 You are the head writer for an original YouTube Shorts channel about surprising
-science-based What If scenarios, told with colorful cartoon stickman animation.
+science-based What If scenarios, told with a detailed 2D cartoon human composited over photorealistic 3D environments.
 
 {topic_instruction}
 
@@ -118,11 +118,15 @@ Keep science plausible; clearly qualify uncertain outcomes. No copied scripts, n
 no long intro, no subscribe request, and no "follow for more" filler.
 
 VISUAL RULES:
-- Use one recurring original character named Pip in every scene.
-- Pip's fixed design: friendly white stickman, round white head, black outline,
-  expressive black eyes, bright teal scarf. Never change body proportions or outfit.
-- Supporting stickmen may appear, but give each a consistent simple color accessory.
-- Colorful cartoon 2D style, clean thick outlines, readable silhouettes, vivid backgrounds.
+- Use one recurring original 2D cartoon human named Pip in every scene.
+- Pip's fixed design: young adult with warm medium skin, large expressive brown eyes,
+  short tousled dark-brown hair, teal hoodie, charcoal trousers and white sneakers.
+  Keep the exact face, hair, outfit, body proportions and colors identical in every scene.
+- Supporting cartoon humans may appear, but keep their designs consistent.
+- Character is detailed 2D animation with clean outlines and polished cel shading.
+- Environments must look like cinematic photorealistic 3D scenes with realistic depth,
+  materials, lighting, atmosphere and believable camera composition. Do not draw cartoon
+  backgrounds or use flat gradients when a real environment can be shown.
 - Every scene must communicate its meaning to a viewer who CANNOT hear the audio.
 - Silent-viewing rule: a deaf viewer must understand the main event by watching alone.
   Never rely on narration, sound effects, music, or spoken explanation to explain the plot.
@@ -131,7 +135,7 @@ VISUAL RULES:
   changing, breaking, rising, falling, disappearing, or affecting Pip.
 - One main action per scene. Avoid abstract symbols unless paired with a literal physical example.
   Avoid tiny details, clutter, vague standing poses, and unrelated decorative shots.
-- Keep Pip visible in every scene when practical; preserve his exact white body and teal scarf.
+- Keep Pip visible in every scene when practical; preserve his exact face, dark hair, teal hoodie and outfit.
   Supporting characters must visibly react to the same event.
 - Make 7–9 scenes. Scene narration chunks must appear in order and together match
   the full narration closely. Each scene should be about 4–8 seconds, with enough time
