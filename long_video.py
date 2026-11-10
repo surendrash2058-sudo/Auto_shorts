@@ -481,14 +481,20 @@ def main():
     validate_long_video(video)
 
     print("4/4 Uploading as PRIVATE for your review...")
+    thumbnail = OUT / f"{slug}_thumbnail.jpg"
+    shorts.make_youtube_thumbnail(item["title"], thumbnail)
+    hashtags = shorts.upload_hashtags(item["title"], ["Documentary"])
     description = (item.get("description", "") + "\n\n" +
-                   "Explore more science-based What If stories on What If Unlocked.\n" +
-                   "\n".join(shorts.CREDITS) + "\n#WhatIf #Science #WhatIfUnlocked")
-    tags = item.get("tags") or ["what if", "science", "space", "documentary", "what if unlocked"]
+                   "Explore more science-based What If stories on What If Unlocked.\n\n" +
+                   hashtags + "\n\n" + "\n".join(shorts.CREDITS))
+    tags = list(dict.fromkeys(
+        ["what if", "science", "space", "documentary", "what if unlocked"] +
+        [str(x)[:30] for x in item.get("tags", []) if str(x).strip()]
+    ))[:15]
     privacy = os.environ.get("PRIVACY", "private").strip().lower()
     if privacy != "private":
         raise RuntimeError("Safety lock: long-form videos must be uploaded as PRIVATE.")
-    video_id = shorts.upload(video, item["title"], description, tags, "private")
+    video_id = shorts.upload(video, item["title"], description, tags, "private", thumbnail_path=thumbnail)
     item["done"] = True
     item["video_id"] = video_id
     item["published_at"] = __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat()
