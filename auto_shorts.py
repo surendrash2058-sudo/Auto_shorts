@@ -2,7 +2,7 @@
 auto_shorts.py - makes ONE "What if" YouTube Short from the next unfinished topic
 in topics.json, then (optionally) uploads it.
 
-Steps: find trends -> Gemini writes script -> stock video -> voice (edge-tts, free) -> word-synced captions -> render frame by frame -> upload
+Steps: find trends -> Gemini writes story -> realistic scene backgrounds -> 2D cartoon human -> voice -> captions -> render -> private YouTube upload
 
 Run:
     python auto_shorts.py            # make the next video only
@@ -1042,7 +1042,160 @@ def has_images():
     return IMAGES.exists() and any(p.suffix.lower() in (".png", ".jpg", ".jpeg", ".webp") for p in IMAGES.glob("*"))
 
 
-def make_bg_func(scene_imgs, scene_texts, total, scene_anims=None, words=None):
+
+def draw_cartoon_human(frame, t, p, txt, i):
+    """Composite a consistent, expressive 2D cartoon human over a realistic scene."""
+    overlay = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    d = ImageDraw.Draw(overlay)
+    text = str(txt).lower()
+
+    fear = has(text, r"fear|scared|panic|terrifi|danger|threat|collapse|crash|attack")
+    surprise = has(text, r"surpris|shock|astonish|unexpected|reveal|sudden")
+    curious = has(text, r"curious|wonder|mystery|question|discover|investigat|look for")
+    happy = has(text, r"happy|happily|joy|relief|smile|safe|success|celebrat")
+    excited = has(text, r"excit|thrill|amazing|victory|cheer")
+    running = has(text, r"run|chase|escape|rush|race|sprint")
+    jumping = has(text, r"jump|leap|launch|fly") or excited
+
+    x = int(W * (0.23 if i % 2 == 0 else 0.77))
+    ground = int(H * 0.91)
+    phase = t * (7.0 if running else 2.2)
+    bob = int((22 * abs(math.sin(phase))) if jumping or running else 7 * math.sin(phase))
+    sway = int(20 * math.sin(phase) if running else 5 * math.sin(t * 1.1))
+    x += sway
+    gy = ground - bob
+
+    # Soft contact shadow anchors the flat character in the photographic world.
+    for n, alpha in ((0, 28), (1, 20), (2, 12)):
+        rx = 105 + n * 18
+        ry = 17 + n * 7
+        d.ellipse([x-rx, ground-ry, x+rx, ground+ry], fill=(0, 0, 0, alpha))
+
+    outline = (31, 29, 43, 255)
+    skin = (222, 157, 119, 255)
+    skin_light = (246, 190, 151, 255)
+    hair = (43, 31, 29, 255)
+    hoodie = (20, 177, 164, 255)
+    hoodie_light = (53, 218, 198, 255)
+    pants = (43, 52, 72, 255)
+    shoe = (245, 245, 239, 255)
+
+    head_y = gy - 470
+    shoulder_y = gy - 330
+    hip_y = gy - 165
+    stride = int(42 * math.sin(phase)) if running else int(7 * math.sin(t * 2))
+
+    # Legs: dark trousers, outlined first and then filled for a clean 2D cel look.
+    left_knee = (x - 48 - stride, gy - 82)
+    right_knee = (x + 48 + stride, gy - 82)
+    for start, knee, foot in [
+        ((x-35, hip_y), left_knee, (x-63-stride, gy-5)),
+        ((x+35, hip_y), right_knee, (x+63+stride, gy-5)),
+    ]:
+        d.line([start, knee, foot], fill=outline, width=54, joint="curve")
+        d.line([start, knee, foot], fill=pants, width=38, joint="curve")
+        fx, fy = foot
+        d.rounded_rectangle([fx-42, fy-26, fx+25, fy+5], radius=13, fill=outline)
+        d.rounded_rectangle([fx-36, fy-22, fx+22, fy], radius=10, fill=shoe)
+        d.line([(fx-25, fy-8), (fx+10, fy-8)], fill=(150, 160, 170, 255), width=4)
+
+    # Hoodie torso with a dark outline, shoulder seams, pocket and drawstrings.
+    d.rounded_rectangle([x-100, shoulder_y-8, x+100, hip_y+22], radius=48,
+                        fill=outline)
+    d.rounded_rectangle([x-88, shoulder_y, x+88, hip_y+10], radius=42,
+                        fill=hoodie)
+    d.arc([x-58, shoulder_y-28, x+58, shoulder_y+85], 5, 175,
+          fill=hoodie_light, width=12)
+    d.rounded_rectangle([x-48, hip_y-65, x+48, hip_y-20], radius=13,
+                        fill=(12, 143, 135, 255), outline=outline, width=4)
+    d.line([(x-12, shoulder_y+18), (x-12, shoulder_y+78)], fill=(225, 245, 239, 255), width=5)
+    d.line([(x+12, shoulder_y+18), (x+12, shoulder_y+78)], fill=(225, 245, 239, 255), width=5)
+
+    # Neck.
+    d.rounded_rectangle([x-27, head_y+55, x+27, head_y+115], radius=16,
+                        fill=outline)
+    d.rounded_rectangle([x-21, head_y+57, x+21, head_y+108], radius=13,
+                        fill=skin)
+
+    # Arm poses change with the scene emotion and action.
+    if fear or surprise or jumping or excited:
+        left_elbow = (x-155, shoulder_y-95)
+        right_elbow = (x+155, shoulder_y-95)
+        left_hand = (x-178, shoulder_y-165)
+        right_hand = (x+178, shoulder_y-165)
+    elif curious:
+        left_elbow = (x-145, shoulder_y+45)
+        right_elbow = (x+115, shoulder_y-15)
+        left_hand = (x-178, shoulder_y+85)
+        right_hand = (x+90, shoulder_y-70)
+    elif running:
+        left_elbow = (x-135, shoulder_y-5 + stride//2)
+        right_elbow = (x+135, shoulder_y+15 - stride//2)
+        left_hand = (x-175, shoulder_y-75 + stride//2)
+        right_hand = (x+175, shoulder_y-55 - stride//2)
+    else:
+        left_elbow = (x-130, shoulder_y+45)
+        right_elbow = (x+130, shoulder_y+45)
+        left_hand = (x-145, shoulder_y+120)
+        right_hand = (x+145, shoulder_y+120)
+
+    for shoulder, elbow, hand in [
+        ((x-78, shoulder_y+28), left_elbow, left_hand),
+        ((x+78, shoulder_y+28), right_elbow, right_hand),
+    ]:
+        d.line([shoulder, elbow, hand], fill=outline, width=43, joint="curve")
+        d.line([shoulder, elbow, hand], fill=hoodie, width=30, joint="curve")
+        hx, hy = hand
+        d.ellipse([hx-19, hy-19, hx+19, hy+19], fill=outline)
+        d.ellipse([hx-14, hy-14, hx+14, hy+14], fill=skin_light)
+
+    # Large expressive face, ears and a consistent dark hairstyle.
+    hr = 78
+    d.ellipse([x-hr-13, head_y-hr+1, x+hr+13, head_y+hr+13],
+              fill=outline)
+    d.ellipse([x-hr, head_y-hr, x+hr, head_y+hr],
+              fill=skin_light, outline=outline, width=8)
+    d.ellipse([x-hr-17, head_y-8, x-hr+8, head_y+30], fill=skin, outline=outline, width=5)
+    d.ellipse([x+hr-8, head_y-8, x+hr+17, head_y+30], fill=skin, outline=outline, width=5)
+    d.polygon([
+        (x-78, head_y-24), (x-83, head_y-66), (x-55, head_y-91),
+        (x-22, head_y-99), (x+8, head_y-91), (x+34, head_y-103),
+        (x+68, head_y-76), (x+82, head_y-35), (x+48, head_y-48),
+        (x+16, head_y-55), (x-18, head_y-44), (x-48, head_y-27)
+    ], fill=hair, outline=outline)
+    d.ellipse([x-65, head_y-94, x-8, head_y-48], fill=hair)
+    d.ellipse([x+15, head_y-101, x+72, head_y-50], fill=hair)
+
+    eye_y = head_y-5
+    eye_w = 21 if fear or surprise else 17
+    for ex in (x-31, x+31):
+        d.ellipse([ex-eye_w, eye_y-17, ex+eye_w, eye_y+22],
+                  fill=(255, 255, 255, 255), outline=outline, width=4)
+        pupil = 8 if fear or surprise else 7
+        d.ellipse([ex-pupil+3, eye_y-5, ex+pupil+3, eye_y+13],
+                  fill=(48, 37, 34, 255))
+    brow_y = eye_y-27
+    if fear or surprise:
+        d.line([(x-52, brow_y-8), (x-15, brow_y-17)], fill=hair, width=8)
+        d.line([(x+15, brow_y-17), (x+52, brow_y-8)], fill=hair, width=8)
+        d.ellipse([x-12, head_y+30, x+12, head_y+53], fill=(90, 35, 42, 255))
+    elif happy or excited:
+        d.arc([x-36, head_y+15, x+36, head_y+62], 5, 175, fill=outline, width=8)
+    elif curious:
+        d.line([(x-49, brow_y-7), (x-17, brow_y-13)], fill=hair, width=7)
+        d.line([(x+17, brow_y-3), (x+49, brow_y-12)], fill=hair, width=7)
+        d.ellipse([x-8, head_y+32, x+8, head_y+47], fill=(120, 65, 60, 255))
+    else:
+        d.arc([x-22, head_y+24, x+22, head_y+51], 5, 175, fill=outline, width=6)
+
+    # Small nose and cheek highlights make the face read as a human cartoon.
+    d.ellipse([x-5, head_y+12, x+5, head_y+21], fill=skin)
+    d.ellipse([x-58, head_y+28, x-39, head_y+38], fill=(239, 128, 126, 100))
+    d.ellipse([x+39, head_y+28, x+58, head_y+38], fill=(239, 128, 126, 100))
+
+    return Image.alpha_composite(frame.convert("RGBA"), overlay).convert("RGB")
+
+def make_bg_func(scene_imgs, scene_texts, total, scene_anims=None, words=None, character_mode=False):
     """Returns f(t) -> background frame: built-in animations, scene pictures, or moving stars."""
     if scene_imgs or scene_anims:
         bounds = []
@@ -1062,8 +1215,12 @@ def make_bg_func(scene_imgs, scene_texts, total, scene_anims=None, words=None):
         def draw_scene(s, tl, p):
             img = scene_imgs[s] if scene_imgs else None
             if img is not None:
-                return kenburns(img, p, s)
-            return anim_frame(scene_anims[s], tl, p, scene_texts[s], s)
+                frame = kenburns(img, p, s)
+            else:
+                frame = anim_frame(scene_anims[s], tl, p, scene_texts[s], s)
+            if character_mode:
+                frame = draw_cartoon_human(frame, tl, p, scene_texts[s], s)
+            return frame
 
         def f(t):
             s = next((i for i, b in enumerate(bounds) if t < b), len(bounds) - 1)
@@ -1091,7 +1248,7 @@ def make_bg_func(scene_imgs, scene_texts, total, scene_anims=None, words=None):
     return f
 
 
-def render(title, words, mp3_path, mp4_path, clip=None, scene_imgs=None, scene_texts=None, scene_anims=None):
+def render(title, words, mp3_path, mp4_path, clip=None, scene_imgs=None, scene_texts=None, scene_anims=None, character_mode=False):
     """Draw captions frame by frame over: scene pictures, a stock clip, or moving stars."""
     total = words[-1][1] + words[-1][2] + 0.8
     n_frames = int(total * FPS)
@@ -1112,7 +1269,7 @@ def render(title, words, mp3_path, mp4_path, clip=None, scene_imgs=None, scene_t
                "-s", f"{W}x{H}", "-r", str(FPS), "-i", "-", "-i", str(mp3_path),
                "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p",
                "-af", "apad", "-c:a", "aac", "-t", dur, str(mp4_path)]
-        bgf, mode = make_bg_func(scene_imgs, scene_texts or [], total, scene_anims, words), "RGB"
+        bgf, mode = make_bg_func(scene_imgs, scene_texts or [], total, scene_anims, words, character_mode), "RGB"
     proc = subprocess.Popen(cmd, stdin=subprocess.PIPE)
     try:
         for f in range(n_frames):
@@ -1780,8 +1937,9 @@ def fetch_scene_visuals(scenes, plan, slug):
         img, src = None, None
         clean = re.sub(r"Follow for more.*$", "", text, flags=re.I).strip() or q
         if poll_ok:
-            ok, err = fetch_pollinations(f"photorealistic, {clean} {q}, ultra realistic, natural lighting, "
-                                         "sharp focus, high detail, no text, no words", path, i * 11 + 3)
+            ok, err = fetch_pollinations(f"photorealistic cinematic 3D-rendered environment, Unreal Engine 5 quality, realistic materials, "
+                                         "physically based lighting, atmospheric depth, cinematic composition, vertical 9:16, "
+                                         f"{clean} {q}, sharp focus, high detail, no people, no characters, no text, no words", path, i * 11 + 3)
             if ok:
                 img, src = prep_photo(path, 0.9), "AI photo"
                 time.sleep(16)                      # free tier: about 1 picture per 15 seconds
@@ -2022,11 +2180,11 @@ def main():
 
     topics = json.loads(TOPICS.read_text(encoding="utf-8"))
     stickman_story = None
-    if os.environ.get("VISUALS", "").lower() == "stickman":
+    if os.environ.get("VISUALS", "").lower() in ("stickman", "cinematic"):
         from stickman_story import generate as generate_stickman_story
         stickman_story = generate_stickman_story(os.environ.get("STICKMAN_TOPIC") or None)
         todo = {"title": stickman_story["title"], "script": stickman_story["narration"],
-                "keywords": "colorful cartoon stickman story", "tags": ["stickman", "what if", "animation"]}
+                "keywords": "cinematic cartoon human story", "tags": ["stickman", "what if", "animation"]}
     else:
         todo = None
     if a.list:
@@ -2052,7 +2210,7 @@ def main():
     print("1/3 voice...")
     words = asyncio.run(make_voice(todo["script"], mp3))
     kw = todo.get("keywords") or todo["title"].replace("What if", "").strip(" ?")
-    mode = os.environ.get("VISUALS", "auto")   # 3d (default, free) | auto (real photos) | anim | images | stock | plain
+    mode = os.environ.get("VISUALS", "auto")   # cinematic (realistic scenes + 2D human) | auto | images | stock | anim | 3d
     scene_texts = split_visual_pairs(todo["script"])
     scene_contexts = visual_context_pairs(todo["script"])
     if stickman_story:
@@ -2076,15 +2234,18 @@ def main():
     scene_videos = None
     if mode == "stickman":
         scene_anims = ["stickman"] * len(scene_texts)
-        print(f"Stickman story ready: {len(stickman_story.get('scenes', []))} story scenes; recurring character Pip.")
-    if mode in ("auto", "images", "stock"):
+        print(f"Legacy stickman story ready: {len(stickman_story.get('scenes', []))} story scenes.")
+    if mode == "cinematic":
+        scene_anims = [pick_anim(t, todo["title"]) for t in scene_texts]
+        print(f"Cinematic cartoon-human story ready: {len(stickman_story.get('scenes', []))} scenes.")
+    if mode in ("auto", "images", "stock", "cinematic"):
         print("Planning unique, narration-context visuals for every two-word beat...")
         plan = plan_scenes(scene_contexts, todo["title"])
     if mode in ("auto", "stock"):
         print("Finding real moving footage for each scene...")
         scene_videos = fetch_scene_videos(scene_texts, plan, slug)
-    if mode in ("auto", "images"):
-        print("Preparing AI/photo fallbacks for scenes without video...")
+    if mode in ("auto", "images", "cinematic"):
+        print("Preparing photorealistic scene backgrounds...")
         scene_imgs = fetch_scene_visuals(scene_contexts, plan, slug)
     if not scene_imgs and not scene_videos and mode in ("auto", "stock"):
         clip = fetch_clip(kw, OUT / f"{slug}_bg.mp4")
@@ -2104,7 +2265,7 @@ def main():
             render_with_scene_videos(todo["title"], words, mp3, mp4, scene_videos, scene_texts, scene_imgs)
         except Exception as e:
             print("Scene-footage renderer failed; switching to safe scene-image renderer:", e)
-            render(todo["title"], words, mp3, mp4, clip, scene_imgs, scene_texts, scene_anims)
+            render(todo["title"], words, mp3, mp4, clip, scene_imgs, scene_texts, scene_anims, character_mode=(mode == "cinematic"))
     else:
         render(todo["title"], words, mp3, mp4, clip, scene_imgs, scene_texts, scene_anims)
     mix_background_music(mp4)
