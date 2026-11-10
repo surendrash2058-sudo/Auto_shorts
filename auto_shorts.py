@@ -2184,7 +2184,7 @@ def main():
         from stickman_story import generate as generate_stickman_story
         stickman_story = generate_stickman_story(os.environ.get("STICKMAN_TOPIC") or None)
         todo = {"title": stickman_story["title"], "script": stickman_story["narration"],
-                "keywords": "cinematic cartoon human story", "tags": ["stickman", "what if", "animation"]}
+                "keywords": "cinematic cartoon human story", "tags": ["cartoon human", "what if", "animation"]}
     else:
         todo = None
     if a.list:
@@ -2267,7 +2267,7 @@ def main():
             print("Scene-footage renderer failed; switching to safe scene-image renderer:", e)
             render(todo["title"], words, mp3, mp4, clip, scene_imgs, scene_texts, scene_anims, character_mode=(mode == "cinematic"))
     else:
-        render(todo["title"], words, mp3, mp4, clip, scene_imgs, scene_texts, scene_anims)
+        render(todo["title"], words, mp3, mp4, clip, scene_imgs, scene_texts, scene_anims, character_mode=(mode == "cinematic"))
     mix_background_music(mp4)
     print("Video ready:", mp4)
     validate_video(mp4)
