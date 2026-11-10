@@ -2,7 +2,7 @@
 auto_shorts.py - makes ONE "What if" YouTube Short from the next unfinished topic
 in topics.json, then (optionally) uploads it.
 
-Steps: find trends -> Gemini writes story -> realistic scene backgrounds -> 2D cartoon human -> voice -> captions -> render -> private YouTube upload
+Steps: find trends -> Gemini writes story -> realistic scene backgrounds -> voice -> captions -> render -> private YouTube upload
 
 Run:
     python auto_shorts.py            # make the next video only
@@ -2184,7 +2184,7 @@ def main():
         from stickman_story import generate as generate_stickman_story
         stickman_story = generate_stickman_story(os.environ.get("STICKMAN_TOPIC") or None)
         todo = {"title": stickman_story["title"], "script": stickman_story["narration"],
-                "keywords": "cinematic cartoon human story", "tags": ["cartoon human", "what if", "animation"]}
+                "keywords": "cinematic science story", "tags": ["what if", "science", "cinematic"]}
     else:
         todo = None
     if a.list:
@@ -2265,9 +2265,9 @@ def main():
             render_with_scene_videos(todo["title"], words, mp3, mp4, scene_videos, scene_texts, scene_imgs)
         except Exception as e:
             print("Scene-footage renderer failed; switching to safe scene-image renderer:", e)
-            render(todo["title"], words, mp3, mp4, clip, scene_imgs, scene_texts, scene_anims, character_mode=(mode == "cinematic"))
+            render(todo["title"], words, mp3, mp4, clip, scene_imgs, scene_texts, scene_anims, character_mode=False)
     else:
-        render(todo["title"], words, mp3, mp4, clip, scene_imgs, scene_texts, scene_anims, character_mode=(mode == "cinematic"))
+        render(todo["title"], words, mp3, mp4, clip, scene_imgs, scene_texts, scene_anims, character_mode=False)
     mix_background_music(mp4)
     print("Video ready:", mp4)
     validate_video(mp4)
