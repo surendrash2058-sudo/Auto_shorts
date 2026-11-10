@@ -16,6 +16,7 @@ import json
 import os
 import re
 import sys
+import time
 from pathlib import Path
 
 DEFAULT_OUTPUT = Path("output/stickman_story.json")
@@ -186,6 +187,25 @@ def validate(data: dict) -> dict:
     return data
 
 
+def is_retryable_error(exc: Exception) -> bool:
+    """Return True for temporary Gemini capacity, rate-limit, or server errors."""
+    message = str(exc).upper()
+    retry_markers = (
+        "503", "UNAVAILABLE", "429", "RESOURCE_EXHAUSTED",
+        "500", "INTERNAL", "502", "BAD GATEWAY", "504", "DEADLINE_EXCEEDED",
+        "TIMEOUT", "TIMED OUT", "SERVICE UNAVAILABLE",
+    )
+    return any(marker in message for marker in retry_markers)
+
+
+def is_fatal_auth_error(exc: Exception) -> bool:
+    message = str(exc).upper()
+    return any(marker in message for marker in (
+        "API_KEY_INVALID", "INVALID API KEY", "PERMISSION_DENIED",
+        "UNAUTHENTICATED", "401", "403",
+    ))
+
+
 def generate(topic: str | None) -> dict:
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
@@ -195,21 +215,72 @@ def generate(topic: str | None) -> dict:
     try:
         from google import genai
         client = genai.Client(api_key=api_key)
-        model = os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
-        response = client.models.generate_content(
-            model=model,
-            contents=build_prompt(topic),
-            config={"response_mime_type": "application/json", "temperature": 0.85,
-                    "max_output_tokens": 5000},
-        )
-        if not response.text:
-            raise RuntimeError("Gemini returned an empty response.")
-        return validate(extract_json(response.text))
     except Exception as exc:
-        print(f"Gemini generation failed: {exc}", file=sys.stderr)
-        print("Using built-in sample story instead.", file=sys.stderr)
+        print(f"Could not initialize Gemini client: {exc}", file=sys.stderr)
+        print("Using built-in sample story.", file=sys.stderr)
         return validate(fallback_story(topic))
 
+    primary = os.getenv("GEMINI_MODEL", "gemini-3.8-flash").strip()
+    configured_fallbacks = os.getenv(
+        "GEMINI_FALLBACK_MODELS",
+        "gemini-3.7-flash,gemini-3.5-flash-lite"
+    )
+    models = list(dict.fromkeys(
+        [m.strip() for m in [primary, *configured_fallbacks.split(",")] if m.strip()]
+    ))
+    prompt = build_prompt(topic)
+    last_error = None
+
+    for model_index, model in enumerate(models):
+        # Retry temporary service/capacity errors with exponential backoff.
+        max_attempts = 3 if model_index == 0 else 2
+        for attempt in range(1, max_attempts + 1):
+            try:
+                print(
+                    f"Gemini story request: model {model} "
+                    f"(model {model_index + 1}/{len(models)}, attempt {attempt}/{max_attempts})",
+                    file=sys.stderr,
+                )
+                response = client.models.generate_content(
+                    model=model,
+                    contents=prompt,
+                    config={
+                        "response_mime_type": "application/json",
+                        "temperature": 0.85,
+                        "max_output_tokens": 5000,
+                    },
+                )
+                if not response.text:
+                    raise RuntimeError(f"{model} returned an empty response.")
+                story = validate(extract_json(response.text))
+                print(f"Story generated successfully with {model}.", file=sys.stderr)
+                return story
+            except Exception as exc:
+                last_error = exc
+                print(f"Gemini {model} attempt {attempt} failed: {exc}", file=sys.stderr)
+
+                if is_fatal_auth_error(exc):
+                    print("Gemini authentication/permission error; stopping model retries.", file=sys.stderr)
+                    break
+
+                if is_retryable_error(exc) and attempt < max_attempts:
+                    delay = 2 ** attempt + (attempt - 1) * 2
+                    print(f"Temporary Gemini error; retrying in {delay}s.", file=sys.stderr)
+                    time.sleep(delay)
+                    continue
+
+                # For overload, quota, unavailable models, or malformed output,
+                # move to the next configured model rather than immediately using a sample.
+                break
+
+        if is_fatal_auth_error(last_error) if last_error else False:
+            break
+        if model_index < len(models) - 1:
+            print(f"Switching to backup Gemini model after {model} failed.", file=sys.stderr)
+
+    print(f"All Gemini models failed. Last error: {last_error}", file=sys.stderr)
+    print("Using built-in sample story as final fallback.", file=sys.stderr)
+    return validate(fallback_story(topic))
 
 def main():
     parser = argparse.ArgumentParser(description="Generate a colorful stickman Shorts script.")
