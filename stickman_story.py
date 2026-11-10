@@ -210,80 +210,122 @@ def is_fatal_auth_error(exc: Exception) -> bool:
     ))
 
 
-def generate(topic: str | None) -> dict:
-    api_key = os.getenv("GEMINI_API_KEY")
+def generate_with_openai(topic: str | None) -> dict | None:
+    """Use OpenAI only after Gemini has failed or is not configured."""
+    api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
-        print("GEMINI_API_KEY not set; using built-in sample story.", file=sys.stderr)
-        return validate(fallback_story(topic))
+        print("OPENAI_API_KEY not set; OpenAI backup unavailable.", file=sys.stderr)
+        return None
 
     try:
-        from google import genai
-        client = genai.Client(api_key=api_key)
+        from openai import OpenAI
+        client = OpenAI(api_key=api_key, timeout=45.0, max_retries=1)
     except Exception as exc:
-        print(f"Could not initialize Gemini client: {exc}", file=sys.stderr)
-        print("Using built-in sample story.", file=sys.stderr)
-        return validate(fallback_story(topic))
+        print(f"Could not initialize OpenAI backup: {exc}", file=sys.stderr)
+        return None
 
-    primary = os.getenv("GEMINI_MODEL", "gemini-3.8-flash").strip()
-    configured_fallbacks = os.getenv(
-        "GEMINI_FALLBACK_MODELS",
-        "gemini-3.7-flash,gemini-3.5-flash-lite"
-    )
-    models = list(dict.fromkeys(
-        [m.strip() for m in [primary, *configured_fallbacks.split(",")] if m.strip()]
-    ))
+    model = os.getenv("OPENAI_MODEL", "gpt-4o-mini").strip()
     prompt = build_prompt(topic)
-    last_error = None
-
-    for model_index, model in enumerate(models):
-        # Retry temporary service/capacity errors with exponential backoff.
-        max_attempts = 3 if model_index == 0 else 2
-        for attempt in range(1, max_attempts + 1):
-            try:
-                print(
-                    f"Gemini story request: model {model} "
-                    f"(model {model_index + 1}/{len(models)}, attempt {attempt}/{max_attempts})",
-                    file=sys.stderr,
-                )
-                response = client.models.generate_content(
-                    model=model,
-                    contents=prompt,
-                    config={
-                        "response_mime_type": "application/json",
-                        "temperature": 0.85,
-                        "max_output_tokens": 5000,
-                    },
-                )
-                if not response.text:
-                    raise RuntimeError(f"{model} returned an empty response.")
-                story = validate(extract_json(response.text))
-                print(f"Story generated successfully with {model}.", file=sys.stderr)
-                return story
-            except Exception as exc:
-                last_error = exc
-                print(f"Gemini {model} attempt {attempt} failed: {exc}", file=sys.stderr)
-
-                if is_fatal_auth_error(exc):
-                    print("Gemini authentication/permission error; stopping model retries.", file=sys.stderr)
-                    break
-
-                if is_retryable_error(exc) and attempt < max_attempts:
-                    delay = 2 ** attempt + (attempt - 1) * 2
-                    print(f"Temporary Gemini error; retrying in {delay}s.", file=sys.stderr)
-                    time.sleep(delay)
-                    continue
-
-                # For overload, quota, unavailable models, or malformed output,
-                # move to the next configured model rather than immediately using a sample.
-                break
-
-        if last_error is not None and is_fatal_auth_error(last_error):
+    for attempt in range(1, 3):
+        try:
+            print(f"Trying OpenAI backup model {model} (attempt {attempt}/2).", file=sys.stderr)
+            response = client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "system", "content": "You are an expert YouTube Shorts story writer. Return only valid JSON matching the requested schema."},
+                    {"role": "user", "content": prompt},
+                ],
+                response_format={"type": "json_object"},
+                temperature=0.85,
+                max_tokens=5000,
+            )
+            content = response.choices[0].message.content
+            if not content:
+                raise RuntimeError("OpenAI returned an empty response.")
+            story = validate(extract_json(content))
+            print(f"Story generated successfully with OpenAI backup ({model}).", file=sys.stderr)
+            return story
+        except Exception as exc:
+            print(f"OpenAI backup attempt {attempt} failed: {exc}", file=sys.stderr)
+            if attempt == 1 and is_retryable_error(exc):
+                time.sleep(3)
+                continue
             break
-        if model_index < len(models) - 1:
-            print(f"Switching to backup Gemini model after {model} failed.", file=sys.stderr)
+    return None
 
-    print(f"All Gemini models failed. Last error: {last_error}", file=sys.stderr)
-    print("Using built-in sample story as final fallback.", file=sys.stderr)
+
+def generate(topic: str | None) -> dict:
+    api_key = os.getenv("GEMINI_API_KEY")
+    if api_key:
+        try:
+            from google import genai
+            client = genai.Client(api_key=api_key)
+        except Exception as exc:
+            print(f"Could not initialize Gemini client: {exc}", file=sys.stderr)
+            client = None
+
+        if client is not None:
+            primary = os.getenv("GEMINI_MODEL", "gemini-3.8-flash").strip()
+            configured_fallbacks = os.getenv(
+                "GEMINI_FALLBACK_MODELS",
+                "gemini-3.7-flash,gemini-3.5-flash-lite"
+            )
+            models = list(dict.fromkeys(
+                [m.strip() for m in [primary, *configured_fallbacks.split(",")] if m.strip()]
+            ))
+            prompt = build_prompt(topic)
+            last_error = None
+
+            for model_index, model in enumerate(models):
+                max_attempts = 3 if model_index == 0 else 2
+                for attempt in range(1, max_attempts + 1):
+                    try:
+                        print(
+                            f"Gemini story request: model {model} "
+                            f"(model {model_index + 1}/{len(models)}, attempt {attempt}/{max_attempts})",
+                            file=sys.stderr,
+                        )
+                        response = client.models.generate_content(
+                            model=model,
+                            contents=prompt,
+                            config={
+                                "response_mime_type": "application/json",
+                                "temperature": 0.85,
+                                "max_output_tokens": 5000,
+                            },
+                        )
+                        if not response.text:
+                            raise RuntimeError(f"{model} returned an empty response.")
+                        generated = validate(extract_json(response.text))
+                        print(f"Story generated successfully with Gemini model {model}.", file=sys.stderr)
+                        return generated
+                    except Exception as exc:
+                        last_error = exc
+                        print(f"Gemini {model} attempt {attempt} failed: {exc}", file=sys.stderr)
+                        if is_fatal_auth_error(exc):
+                            print("Gemini authentication/permission error; stopping Gemini retries.", file=sys.stderr)
+                            break
+                        if is_retryable_error(exc) and attempt < max_attempts:
+                            delay = 2 ** attempt + (attempt - 1) * 2
+                            print(f"Temporary Gemini error; retrying in {delay}s.", file=sys.stderr)
+                            time.sleep(delay)
+                            continue
+                        break
+
+                if last_error is not None and is_fatal_auth_error(last_error):
+                    break
+                if model_index < len(models) - 1:
+                    print(f"Switching to backup Gemini model after {model} failed.", file=sys.stderr)
+
+            print(f"All Gemini models failed. Last error: {last_error}", file=sys.stderr)
+    else:
+        print("GEMINI_API_KEY not set; skipping Gemini and trying OpenAI backup.", file=sys.stderr)
+
+    openai_story = generate_with_openai(topic)
+    if openai_story is not None:
+        return openai_story
+
+    print("Gemini and OpenAI unavailable; using built-in sample story.", file=sys.stderr)
     return validate(fallback_story(topic))
 
 def main():
