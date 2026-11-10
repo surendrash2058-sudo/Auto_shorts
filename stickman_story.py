@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 stickman_story.py
-Create an original 40–60 second cinematic 2D-cartoon-human Short script with
+Create an original 40–60 second cinematic environment-led Short script with
 Gemini. This is the first stage of the cinematic cartoon-human video pipeline.
 
 Usage:
@@ -45,20 +45,20 @@ def fallback_story(topic: str | None = None) -> dict:
     narration = (
         "Imagine letting go of your phone… and watching it float away. "
         "If Earth suddenly lost gravity, people, cars, and oceans would start drifting upward. "
-        "Pip, our cartoon adventurer, grabs a streetlamp as everything around him lifts off. "
+        "A streetlamp and nearby objects lift off as everything around them begins floating. "
         "But the danger gets worse. Earth's atmosphere would no longer stay in place, "
         "and breathing could become impossible. The planet would not feel like a giant playground for long. "
         "Without gravity holding things together, life as we know it would collapse. "
         "So would floating away be fun? Only for a moment."
     )
     parts = [
-        ("Pip drops a phone and it floats upward", "surprised"),
-        ("Pip jumps and keeps rising above the street", "funny"),
+        ("A phone drops and floats upward above an empty street", "surprised"),
+        ("Loose objects rise above the empty street", "funny"),
         ("Cars and objects drift into the sky", "shocked"),
         ("The ocean lifts into enormous floating blobs", "amazed"),
-        ("Pip clings to a streetlamp while the air thins", "scared"),
+        ("A streetlamp and nearby objects drift upward as the air thins", "scared"),
         ("A simple Earth diagram shows gravity disappearing", "serious"),
-        ("Pip looks at the viewer as the scene fades", "curious"),
+        ("The empty street fades into the distant Earth", "curious"),
     ]
     scenes = []
     for i, (visual, emotion) in enumerate(parts, 1):
@@ -66,7 +66,7 @@ def fallback_story(topic: str | None = None) -> dict:
             "scene": i,
             "narration": visual + ".",
             "visual": visual,
-            "action": "clear readable full-body cartoon-human movement",
+            "action": "clear readable environmental movement and visible cause and effect",
             "emotion": emotion,
             "camera": "medium shot",
         })
@@ -74,11 +74,9 @@ def fallback_story(topic: str | None = None) -> dict:
         "title": title[:85],
         "hook": "Imagine letting go of your phone… and watching it float away.",
         "narration": narration,
-        "characters": [
-            {"id": "pip", "name": "Pip", "description": "original young adult 2D cartoon human named Pip, warm medium skin, expressive large brown eyes, short tousled dark-brown hair, teal hoodie, charcoal trousers and white sneakers; preserve the exact face, hair, outfit, proportions and colors in every scene"},
-        ],
+        "characters": [],
         "scenes": scenes,
-        "visual_style": "detailed expressive 2D cartoon human character composited over photorealistic cinematic 3D environments, clean bold outlines, polished cel shading, consistent face and outfit, dramatic realistic lighting",
+        "visual_style": "cinematic photorealistic 3D environments, realistic materials, dramatic lighting, atmospheric depth, no cartoon characters or illustrated humans",
         "music_mood": "playful curiosity that builds into suspense",
         "sound_effects": ["soft pop", "cartoon whoosh", "rising wind", "dramatic impact"],
         "ending_question": "Would you enjoy floating for one minute?",
@@ -91,7 +89,7 @@ def build_prompt(topic: str | None) -> str:
     )
     return f"""
 You are the head writer for an original YouTube Shorts channel about surprising
-science-based What If scenarios, told with a detailed 2D cartoon human composited over photorealistic 3D environments.
+science-based What If scenarios, told through cinematic photorealistic 3D environments and visual cause-and-effect.
 
 {topic_instruction}
 
@@ -101,7 +99,7 @@ Start with a powerful curiosity gap in the first 1–2 seconds: show an impossib
 dangerous, or surprising result before explaining why it happens. Build escalating
 consequences, include one memorable reveal, and finish with a thought-provoking question.
 EMOTION + CURIOSITY RETENTION RULES:
-- Give the viewer a reason to care: Pip must want, fear, lose, discover, or try something.
+- Give the viewer a reason to care through visible stakes, danger, discovery, and consequences.
 - Create a clear emotional arc across the story (for example curiosity -> surprise -> fear
   -> determination -> relief/shock). Do not keep Pip emotionally neutral.
 - Every scene must change something: reveal a new clue, raise the stakes, cause a reaction,
@@ -110,20 +108,15 @@ EMOTION + CURIOSITY RETENTION RULES:
   or emotional turn. Keep each beat easy to understand at a glance.
 - Delay the biggest explanation until after the viewer has seen a compelling consequence.
   Use a setup -> escalation -> twist/payoff structure, not a list of facts.
-- Pip's emotion must be visible in face AND body language: widened eyes/open mouth for
-  surprise, leaning back/raised arms for fear, forward-leaning pose for curiosity,
-  energetic raised arms for excitement, relaxed smile for relief.
+- Convey emotion through camera movement, lighting, environmental changes, and consequences.
 - Make the ending payoff answer the opening hook, then leave one natural question.
 Keep science plausible; clearly qualify uncertain outcomes. No copied scripts, no fake facts,
 no long intro, no subscribe request, and no "follow for more" filler.
 
 VISUAL RULES:
-- Use one recurring original 2D cartoon human named Pip in every scene.
-- Pip's fixed design: young adult with warm medium skin, large expressive brown eyes,
-  short tousled dark-brown hair, teal hoodie, charcoal trousers and white sneakers.
-  Keep the exact face, hair, outfit, body proportions and colors identical in every scene.
-- Supporting cartoon humans may appear, but keep their designs consistent.
-- Character is detailed 2D animation with clean outlines and polished cel shading.
+- Do NOT show a recurring cartoon character, mascot, stick figure, or illustrated human.
+- Prefer cinematic environments, realistic objects, animals, vehicles, landscapes, and physical events.
+- If a human is essential, show realistic live-action-style people briefly; never use cartoon characters.
 - Environments must look like cinematic photorealistic 3D scenes with realistic depth,
   materials, lighting, atmosphere and believable camera composition. Do not draw cartoon
   backgrounds or use flat gradients when a real environment can be shown.
@@ -135,8 +128,7 @@ VISUAL RULES:
   changing, breaking, rising, falling, disappearing, or affecting Pip.
 - One main action per scene. Avoid abstract symbols unless paired with a literal physical example.
   Avoid tiny details, clutter, vague standing poses, and unrelated decorative shots.
-- Keep Pip visible in every scene when practical; preserve his exact face, dark hair, teal hoodie and outfit.
-  Supporting characters must visibly react to the same event.
+- Keep the important environment, object, or physical event clearly visible in every scene.
 - Make 7–9 scenes. Scene narration chunks must appear in order and together match
   the full narration closely. Each scene should be about 4–8 seconds, with enough time
   to see the action and its consequence.
@@ -152,9 +144,7 @@ Return ONLY valid JSON in this exact structure:
   "title": "short accurate title",
   "hook": "opening hook",
   "narration": "complete voiceover, 85-135 words",
-  "characters": [
-    {{"id":"pip","name":"Pip","description":"exact recurring visual design"}}
-  ],
+  "characters": [],
   "scenes": [
     {{
       "scene": 1,
