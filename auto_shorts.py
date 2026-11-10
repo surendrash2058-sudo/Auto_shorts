@@ -1749,51 +1749,49 @@ def cat_query(scene_text, title=""):
 
 # ---------- scene planning (Gemini) + drawn illustrations ----------
 def plan_scenes(texts, title):
-    """Create photo search phrases and optional drawings with Gemini."""
-    plan = [{"query": simple_query(t) or t[:90], "art": None} for t in texts]
+    """Create a specific photorealistic image prompt and search query per scene."""
+    plan = [{"query": simple_query(t, n=5) or t[:90], "image_prompt":
+             ("Photorealistic cinematic movie still showing this exact scene: " + str(t)[:900] +
+              ". Real-world details, believable scale and materials, natural cinematic lighting,               "atmospheric depth, vertical portrait framing, no text, logos, illustration, or cartoon.")}
+            for t in texts]
     if not os.environ.get("GEMINI_API_KEY"):
+        print("GEMINI_API_KEY missing; using narration-context image prompts.")
         return plan
     try:
         listing = "\n".join(f"{i + 1}. {t}" for i, t in enumerate(texts))
         prompt = (
-            f"Video title: {title}\nVoiceover visual beats in exact order (each beat is exactly two consecutive spoken words):\n{listing}\n\n"
-            "Each item contains an exact two-word audio anchor plus nearby narration context. Use the context to understand pronouns, grammar, and the real event. Create a different, literal shot for EACH item that depicts the exact event being narrated at that moment. Never use a broad topic image, generic filler, or the same subject/composition for consecutive beats. The two anchor words must be visibly represented through their contextual meaning. Return a distinct query for every item. For EACH beat give:\n"
-            '- "query": 3-5 plain English words to find a REAL MOVING VIDEO CLIP showing the exact action or subject '
-            "(examples: 'earth rotating in space', 'city traffic time lapse', 'cracked dry earth close up', "
-            "'solar flare erupting from sun'). Prefer concrete visible actions, environments, and camera subjects; "
-            "For visual variety, alternate wide establishing shots, aerial views, dramatic close-ups, "
-            "macro details, and tracking shots; use cinematic natural light and believable scale. "
-            "Keep the imagery scientifically plausible, avoid text overlays, and never use a shot "
-            "that does not match the exact narration context.\n"
-            '- "art": a simple, bold, flat illustration as drawing steps on a canvas '
-            "1000 wide x 1778 tall (x goes right, y goes down). Put the main subject big, between y=200 and y=950. "
-            "Format: {\"bg\":[\"#top color\",\"#bottom color\"],\"shapes\":[{\"t\":\"circle\",\"x\":500,\"y\":600,\"r\":220,\"fill\":\"#ffcc00\",\"glow\":true}]} . "
-            "Use 10-25 shapes, bright colors, and a background that fits the topic.\n"
-            "Reply with ONLY a JSON array with one object per scene: [{\"query\":\"...\",\"art\":{...}}]"
+            f"Video title: {title}\nCreate a photorealistic shot-by-shot storyboard.\n{listing}\n\n"
+            "For every numbered scene return a concise 3-6 word query and a detailed standalone "
+            "image_prompt of 60-100 words. Describe the exact visible subject and action, setting, "
+            "time/weather, foreground/background, camera distance and angle, lighting, and emotional "
+            "atmosphere. Depict the actual narration event, not just the broad topic. Preserve continuity "
+            "where scenes share a place or object, while varying shot scale and camera angle. Use "
+            "photorealistic live-action movie-still quality, realistic materials, believable anatomy "
+            "and physics, cinematic depth of field, vertical 9:16 composition. If a person is essential, "
+            "show a realistic live-action person. Do not invent unrelated people or objects. No text, "
+            "captions, watermarks, logos, cartoon, anime, vector art, or illustration. Return ONLY a "
+            "JSON array with exactly one object per scene: [{\"query\":\"...\",\"image_prompt\":\"...\"}]"
         )
-        text = gemini_text(prompt, max_output_tokens=9000)
-        if text.startswith("```"):
-            text = text.split("\n", 1)[1].rsplit("```", 1)[0]
-        data = json.loads(text)
-        used_queries = set()
+        raw = gemini_text(prompt, max_output_tokens=9000)
+        if raw.startswith("```"):
+            raw = raw.split("\n", 1)[1].rsplit("```", 1)[0]
+        data = json.loads(raw)
+        used = set()
         for i in range(len(texts)):
             item = data[i] if i < len(data) and isinstance(data[i], dict) else {}
             query = str(item.get("query") or plan[i]["query"]).strip()
-            normalized = re.sub(r"\s+", " ", query.lower())
-            if normalized in used_queries:
-                contextual_fallback = simple_query(texts[i], n=5) or query
-                query = contextual_fallback
-                normalized = re.sub(r"\s+", " ", query.lower())
-            if normalized in used_queries:
-                query = f"{query} distinct camera angle {i + 1}"
-                normalized = re.sub(r"\s+", " ", query.lower())
-            used_queries.add(normalized)
-            plan[i] = {"query": query[:100],
-                       "art": item.get("art") if isinstance(item.get("art"), dict) else None}
-        print("Scene plan ready (scene-specific moving-footage searches + illustration fallbacks).")
+            image_prompt = str(item.get("image_prompt") or plan[i]["image_prompt"]).strip()
+            norm = re.sub(r"\s+", " ", query.lower())
+            if norm in used:
+                query = simple_query(texts[i], n=6) or f"{query} scene {i + 1}"
+                norm = re.sub(r"\s+", " ", query.lower())
+            used.add(norm)
+            plan[i] = {"query": query[:120], "image_prompt": image_prompt[:1900]}
+        print(f"Gemini created {len(plan)} scene-specific photorealistic image prompts.")
     except Exception as e:
-        print("Scene planning failed, using simple searches:", e)
+        print("Gemini image storyboard failed; using narration-context prompts:", e)
     return plan
+
 def hexcol(c, default=(255, 255, 255)):
     try:
         c = str(c).lstrip("#")
