@@ -529,6 +529,7 @@ def anim_stickman(cv, d, t, p, txt, i):
     else:
         top, bot, ground = (255, 165, 90), (110, 70, 165), (65, 125, 85)
     # The cached scene gradient is supplied by anim_frame; avoid redrawing it per frame.
+    floating = has(text, r"float|gravity|drift|space|rise|upward")
     # Large, instantly readable visual actions: the story must make sense with sound off.
     def arrow(x1, y1, x2, y2, color=(255, 225, 70), width=12):
         d.line([(x1, y1), (x2, y2)], fill=color, width=width)
@@ -588,7 +589,6 @@ def anim_stickman(cv, d, t, p, txt, i):
             sx=470+k*38; sy=400+25*math.sin(t*2+k)
             d.line([(sx-14,sy-14),(sx+14,sy+14)], fill=(205,240,255), width=6)
             d.line([(sx-14,sy+14),(sx+14,sy-14)], fill=(205,240,255), width=6)
-    floating = has(text, r"float|gravity|drift|space|rise|upward")
     running = has(text, r"run|chase|escape|rush|race")
     scared = has(text, r"danger|scared|panic|dangerous|collapse|crash")
     jumping = has(text, r"jump|leap|launch|fly")
