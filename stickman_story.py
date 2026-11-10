@@ -273,7 +273,7 @@ def generate(topic: str | None) -> dict:
                 # move to the next configured model rather than immediately using a sample.
                 break
 
-        if is_fatal_auth_error(last_error) if last_error else False:
+        if last_error is not None and is_fatal_auth_error(last_error):
             break
         if model_index < len(models) - 1:
             print(f"Switching to backup Gemini model after {model} failed.", file=sys.stderr)
