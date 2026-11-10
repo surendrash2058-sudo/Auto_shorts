@@ -2,7 +2,7 @@
 """
 stickman_story.py
 Create an original 40–60 second cinematic environment-led Short script with
-Gemini. This is the first stage of the cinematic cartoon-human video pipeline.
+Gemini. This is the first stage of the cinematic photorealistic video pipeline.
 
 Usage:
   python stickman_story.py
@@ -22,8 +22,8 @@ from pathlib import Path
 DEFAULT_OUTPUT = Path("output/stickman_story.json")
 MIN_WORDS = 85
 MAX_WORDS = 135
-MIN_SCENES = 6
-MAX_SCENES = 10
+MIN_SCENES = 7
+MAX_SCENES = 12
 
 
 def word_count(text: str) -> int:
@@ -93,7 +93,7 @@ science-based What If scenarios, told through cinematic photorealistic 3D enviro
 
 {topic_instruction}
 
-Create ONE original short, designed for a 40–60 second video.
+Create ONE original short, designed for a 40–60 second video with 7–12 scenes chosen to match story duration and pacing.
 Narration must be 85–135 words, natural spoken English, energetic and easy to understand.
 Start with a powerful curiosity gap in the first 1–2 seconds: show an impossible,
 dangerous, or surprising result before explaining why it happens. Build escalating
@@ -101,7 +101,7 @@ consequences, include one memorable reveal, and finish with a thought-provoking 
 EMOTION + CURIOSITY RETENTION RULES:
 - Give the viewer a reason to care through visible stakes, danger, discovery, and consequences.
 - Create a clear emotional arc across the story (for example curiosity -> surprise -> fear
-  -> determination -> relief/shock). Do not keep Pip emotionally neutral.
+  -> determination -> relief/shock). Let the emotional tone change naturally with the events.
 - Every scene must change something: reveal a new clue, raise the stakes, cause a reaction,
   or show a consequence. No repeated filler shots.
 - Every 5–8 seconds introduce a new visual discovery, unanswered question, escalation,
@@ -125,17 +125,14 @@ VISUAL RULES:
   Never rely on narration, sound effects, music, or spoken explanation to explain the plot.
 - Show a clear visual cause -> action -> result. Use large recognizable objects, unmistakable
   gestures, expressive reactions, and visible consequences. Show the important object moving,
-  changing, breaking, rising, falling, disappearing, or affecting Pip.
+  changing, breaking, rising, falling, disappearing, or disappearing, with visible consequences.
 - One main action per scene. Avoid abstract symbols unless paired with a literal physical example.
   Avoid tiny details, clutter, vague standing poses, and unrelated decorative shots.
 - Keep the important environment, object, or physical event clearly visible in every scene.
-- Make 7–9 scenes. Scene narration chunks must appear in order and together match
-  the full narration closely. Each scene should be about 4–8 seconds, with enough time
-  to see the action and its consequence.
+- Make 7–12 scenes depending on narration length and pacing. Aim for about 5–8 seconds per scene. Scene narration chunks must appear in order and together match the full narration closely.
 - Use visual continuity: the result of one scene should lead naturally into the next.
 - Retention structure: scene 1 is the hook; scenes 2–3 raise a question; middle scenes
-  escalate danger or wonder; second-last scene delivers the biggest reveal; final scene
-  gives the payoff and a clear reaction from Pip.
+  escalate danger or wonder; one of the final two scenes delivers the biggest reveal; the final scene gives the payoff and a clear visual consequence.
 - Each scene's emotion must match its actual event and visibly differ when the story turns.
 - Vertical 9:16 composition; keep faces and important action near the center safe area.
 
@@ -150,7 +147,7 @@ Return ONLY valid JSON in this exact structure:
       "scene": 1,
       "narration": "the exact voiceover lines for this scene",
       "visual": "what the viewer sees, including setting and props",
-      "action": "specific movement/gesture of Pip or other characters",
+      "action": "specific visible movement or physical consequence in the scene",
       "emotion": "one word",
       "camera": "wide shot, medium shot, close-up, or tracking shot"
     }}
@@ -319,7 +316,7 @@ def generate(topic: str | None) -> dict:
     return validate(fallback_story(topic))
 
 def main():
-    parser = argparse.ArgumentParser(description="Generate a colorful stickman Shorts script.")
+    parser = argparse.ArgumentParser(description="Generate a photorealistic cinematic Shorts script.")
     parser.add_argument("--topic", help="Optional What If topic. Gemini invents one if omitted.")
     parser.add_argument("--output", default=str(DEFAULT_OUTPUT), help="JSON output path.")
     args = parser.parse_args()
