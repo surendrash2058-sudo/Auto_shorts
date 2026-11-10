@@ -1008,29 +1008,41 @@ def render(title, words, mp3_path, mp4_path, clip=None, scene_imgs=None, scene_t
 # ---------- 3d. cinematic audio bed ----------
 
 def mix_background_music(video_path):
-    """Mix an optional licensed cinematic music bed under narration."""
+    """Mix optional licensed music and a short intro impact under narration."""
     music = HERE / "assets" / "background_music.mp3"
-    if not music.exists():
-        print("No assets/background_music.mp3 found; keeping clean narration-only audio.")
+    impact = HERE / "assets" / "intro_impact.wav"
+    if not music.exists() and not impact.exists():
+        print("No optional soundtrack/SFX assets found; keeping clean narration-only audio.")
         return
+
+    cmd = ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error", "-i", str(video_path)]
+    filters = ["[0:a]volume=1.0[voice]"]
+    labels = ["[voice]"]
+    input_index = 1
+    if music.exists():
+        cmd += ["-stream_loop", "-1", "-i", str(music)]
+        filters.append(f"[{input_index}:a]volume=0.085,afade=t=in:st=0:d=1.2[music]")
+        labels.append("[music]")
+        input_index += 1
+    if impact.exists():
+        cmd += ["-i", str(impact)]
+        filters.append(f"[{input_index}:a]atrim=duration=1.5,volume=0.20,afade=t=out:st=0.9:d=0.5,adelay=0|0[sfx]")
+        labels.append("[sfx]")
+
+    filters.append("".join(labels) +
+                   f"amix=inputs={len(labels)}:duration=first:dropout_transition=2,"
+                   "alimiter=limit=0.95[aout]")
     mixed = video_path.with_name(video_path.stem + "_mixed.mp4")
-    cmd = [
-        "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
-        "-i", str(video_path), "-stream_loop", "-1", "-i", str(music),
-        "-filter_complex",
-        "[0:a]volume=1.0[voice];"
-        "[1:a]volume=0.085,afade=t=in:st=0:d=1.2[music];"
-        "[voice][music]amix=inputs=2:duration=first:dropout_transition=2,"
-        "alimiter=limit=0.95[aout]",
-        "-map", "0:v", "-map", "[aout]", "-c:v", "copy",
-        "-c:a", "aac", "-b:a", "192k", "-shortest", str(mixed)
+    cmd += [
+        "-filter_complex", ";".join(filters), "-map", "0:v", "-map", "[aout]",
+        "-c:v", "copy", "-c:a", "aac", "-b:a", "192k", "-shortest", str(mixed)
     ]
     result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
     if result.returncode or not mixed.exists() or mixed.stat().st_size < 100_000:
         mixed.unlink(missing_ok=True)
-        raise RuntimeError("Cinematic music mix failed: " + (result.stderr or "")[-1600:])
+        raise RuntimeError("Cinematic audio mix failed: " + (result.stderr or "")[-1600:])
     os.replace(mixed, video_path)
-    print("Cinematic music bed mixed under narration at a low level.")
+    print("Optional cinematic music/SFX mixed under narration.")
 
 
 # ---------- 4. upload ----------
