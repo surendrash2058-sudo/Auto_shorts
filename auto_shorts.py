@@ -2015,6 +2015,7 @@ def main():
                             ". Action: " + str(spec.get("action", "")) +
                             ". Emotion: " + str(spec.get("emotion", "")))
         scene_contexts = enriched
+        scene_texts = scene_contexts
     scene_imgs, scene_anims, clip, is3d = None, None, None, False
     plan = None
     scene_videos = None
