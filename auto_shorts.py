@@ -528,9 +528,7 @@ def anim_stickman(cv, d, t, p, txt, i):
         top, bot, ground = (145, 210, 245), (55, 115, 190), (215, 238, 250)
     else:
         top, bot, ground = (255, 165, 90), (110, 70, 165), (65, 125, 85)
-    for y in range(GH):
-        col = tuple(int(top[k] + (bot[k]-top[k]) * y / GH) for k in range(3))
-        d.line((0, y, GW, y), fill=col)
+    # The cached scene gradient is supplied by anim_frame; avoid redrawing it per frame.
     if has(text, r"space|planet|earth|moon|gravity|float|orbit|star|sky"):
         for a, b, cc, e in rv(("pipstars", i), 48):
             x, yy = a * GW, (b * GH - t * (8 + cc * 10)) % GH
