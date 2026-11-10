@@ -1752,7 +1752,8 @@ def plan_scenes(texts, title):
     """Create a specific photorealistic image prompt and search query per scene."""
     plan = [{"query": simple_query(t, n=5) or t[:90], "image_prompt":
              ("Photorealistic cinematic movie still showing this exact scene: " + str(t)[:900] +
-              ". Real-world details, believable scale and materials, natural cinematic lighting,               "atmospheric depth, vertical portrait framing, no text, logos, illustration, or cartoon.")}
+              ". Real-world details, believable scale and materials, natural cinematic lighting, " +
+              "atmospheric depth, vertical portrait framing, no text, logos, illustration, or cartoon.")}
             for t in texts]
     if not os.environ.get("GEMINI_API_KEY"):
         print("GEMINI_API_KEY missing; using narration-context image prompts.")
