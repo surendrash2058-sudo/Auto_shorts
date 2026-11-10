@@ -410,17 +410,25 @@ def render_long_video(title, words, narration, output, clips, scenes, images):
 
     narration_index = len(scenes)
     cmd += ["-i", str(narration)]
+    filters.append(f"[{narration_index}:a]loudnorm=I=-16:TP=-1.5:LRA=11[voice]")
+    audio_labels = ["[voice]"]
+    next_audio_index = narration_index + 1
     music = ROOT / "assets" / "background_music.mp3"
+    impact = ROOT / "assets" / "intro_impact.wav"
     if music.exists():
         cmd += ["-stream_loop", "-1", "-i", str(music)]
-        music_index = narration_index + 1
-        filters.append(f"[{narration_index}:a]loudnorm=I=-16:TP=-1.5:LRA=11[voice];"
-                       f"[{music_index}:a]volume=0.10[music];"
-                       f"[voice][music]amix=inputs=2:duration=first:dropout_transition=2[aout]")
-        audio_map = "[aout]"
-    else:
-        filters.append(f"[{narration_index}:a]loudnorm=I=-16:TP=-1.5:LRA=11[aout]")
-        audio_map = "[aout]"
+        filters.append(f"[{next_audio_index}:a]volume=0.085,afade=t=in:st=0:d=1.5[music]")
+        audio_labels.append("[music]")
+        next_audio_index += 1
+    if impact.exists():
+        cmd += ["-i", str(impact)]
+        filters.append(f"[{next_audio_index}:a]atrim=duration=1.5,volume=0.20,"
+                       f"afade=t=out:st=0.9:d=0.5,adelay=0|0[sfx]")
+        audio_labels.append("[sfx]")
+    filters.append("".join(audio_labels) +
+                   f"amix=inputs={len(audio_labels)}:duration=first:dropout_transition=2,"
+                   "alimiter=limit=0.95[aout]")
+    audio_map = "[aout]"
 
     # Store the complex graph in a file. This avoids shell/argument-length and
     # quoting problems when many scene filters and subtitle options are combined.
