@@ -96,8 +96,23 @@ science-based What If scenarios, told with colorful cartoon stickman animation.
 
 Create ONE original short, designed for a 40–60 second video.
 Narration must be 85–135 words, natural spoken English, energetic and easy to understand.
-Start with a powerful visual hook in the first sentence. Build escalating consequences,
-include one memorable reveal, and finish with a thought-provoking question.
+Start with a powerful curiosity gap in the first 1–2 seconds: show an impossible,
+dangerous, or surprising result before explaining why it happens. Build escalating
+consequences, include one memorable reveal, and finish with a thought-provoking question.
+EMOTION + CURIOSITY RETENTION RULES:
+- Give the viewer a reason to care: Pip must want, fear, lose, discover, or try something.
+- Create a clear emotional arc across the story (for example curiosity -> surprise -> fear
+  -> determination -> relief/shock). Do not keep Pip emotionally neutral.
+- Every scene must change something: reveal a new clue, raise the stakes, cause a reaction,
+  or show a consequence. No repeated filler shots.
+- Every 5–8 seconds introduce a new visual discovery, unanswered question, escalation,
+  or emotional turn. Keep each beat easy to understand at a glance.
+- Delay the biggest explanation until after the viewer has seen a compelling consequence.
+  Use a setup -> escalation -> twist/payoff structure, not a list of facts.
+- Pip's emotion must be visible in face AND body language: widened eyes/open mouth for
+  surprise, leaning back/raised arms for fear, forward-leaning pose for curiosity,
+  energetic raised arms for excitement, relaxed smile for relief.
+- Make the ending payoff answer the opening hook, then leave one natural question.
 Keep science plausible; clearly qualify uncertain outcomes. No copied scripts, no fake facts,
 no long intro, no subscribe request, and no "follow for more" filler.
 
@@ -121,6 +136,10 @@ VISUAL RULES:
   the full narration closely. Each scene should be about 4–8 seconds, with enough time
   to see the action and its consequence.
 - Use visual continuity: the result of one scene should lead naturally into the next.
+- Retention structure: scene 1 is the hook; scenes 2–3 raise a question; middle scenes
+  escalate danger or wonder; second-last scene delivers the biggest reveal; final scene
+  gives the payoff and a clear reaction from Pip.
+- Each scene's emotion must match its actual event and visibly differ when the story turns.
 - Vertical 9:16 composition; keep faces and important action near the center safe area.
 
 Return ONLY valid JSON in this exact structure:
