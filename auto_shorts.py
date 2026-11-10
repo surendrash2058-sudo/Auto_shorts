@@ -1352,7 +1352,7 @@ def add_topics(topics, n, trends=None, front=False):
         "build a clear visual story: bold opening image, escalating consequences, one memorable reveal, "
         "and a satisfying final line; create an unanswered question early and resolve it before the ending; "
         "keep claims scientifically accurate, never invent statistics, and signal uncertainty honestly; "
-        "avoid filler, repeated phrases, awkward abbreviations, and hard-to-pronounce number strings; 
+        "avoid filler, repeated phrases, awkward abbreviations, and hard-to-pronounce number strings; "
         "make the title compelling and accurate, ideally 35-65 characters, with no misleading clickbait; "
         "the last sentence is exactly: Follow for more what if stories.\n"
         "Also give 'keywords': 2 or 3 plain English words to search stock footage for the video background "
