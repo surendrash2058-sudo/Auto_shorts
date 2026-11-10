@@ -1420,7 +1420,10 @@ def plan_scenes(texts, title):
             '- "query": 3-5 plain English words to find a REAL MOVING VIDEO CLIP showing the exact action or subject '
             "(examples: 'earth rotating in space', 'city traffic time lapse', 'cracked dry earth close up', "
             "'solar flare erupting from sun'). Prefer concrete visible actions, environments, and camera subjects; "
-            "do not use abstract words, generic people, or a query that does not match the scene narration.\n"
+            "For visual variety, alternate wide establishing shots, aerial views, dramatic close-ups, "
+            "macro details, and tracking shots; use cinematic natural light and believable scale. "
+            "Keep the imagery scientifically plausible, avoid text overlays, and never use a shot "
+            "that does not match the exact narration context.\n"
             '- "art": a simple, bold, flat illustration as drawing steps on a canvas '
             "1000 wide x 1778 tall (x goes right, y goes down). Put the main subject big, between y=200 and y=950. "
             "Format: {\"bg\":[\"#top color\",\"#bottom color\"],\"shapes\":[{\"t\":\"circle\",\"x\":500,\"y\":600,\"r\":220,\"fill\":\"#ffcc00\",\"glow\":true}]} . "
