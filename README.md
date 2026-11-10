@@ -34,14 +34,13 @@ Other modes (env VISUALS): `auto` (real photos: AI photo, Pixabay/Pexels with ke
 To add a new 3D look: write draw_xxx + a branch in render3d + a rule in KIND3D / ANIM_RULES.
 
 ## Notes
-- New API projects can only upload as **private** until Google audits the project.
+- The GitHub Actions workflow sets `PRIVACY=public`, so it requests public YouTube uploads.
+- Important: newly created or unaudited YouTube API projects may be restricted to private uploads by Google. If Google applies this restriction, videos may remain private until the API project passes Google's audit.
 - Without GEMINI_API_KEY the system uses starter topics and cannot generate new scripts or Gemini scene plans. Add the key to enable automatic script generation.
-- Not tested with real internet: trend search, Pexels download, voice, upload, GitHub Action.
-
 
 ## Automated schedule
 
-The GitHub Actions workflow in `.github/workflows/daily.yml` runs daily at 18:00 Korea time and keeps uploads **private** by default. You can also run it manually from the Actions tab.
+The GitHub Actions workflow in `.github/workflows/daily.yml` runs on its configured daily schedule and uploads videos with **public** privacy. You can also run it manually from the Actions tab.
 
 Add these GitHub Actions secrets:
 - `YOUTUBE_API_KEY`
@@ -49,4 +48,4 @@ Add these GitHub Actions secrets:
 - `GEMINI_API_KEY`
 - Optional: `PEXELS_API_KEY`, `PIXABAY_API_KEY`
 
-Do not change `PRIVACY=private` until you have reviewed several generated videos and confirmed the OAuth account, science, visuals, audio rights, and channel settings. GitHub-hosted runners are temporary: the local `topics.json` queue and generated files do not persist between runs unless saved as artifacts or committed to durable storage. A later milestone should move topic history and outputs to persistent storage.
+The workflow currently sets `PRIVACY=public`. To change it, edit the `PRIVACY` value in `.github/workflows/daily.yml`. GitHub-hosted runners are temporary: the local `topics.json` queue and generated files do not persist between runs unless saved as artifacts or committed to durable storage. A later milestone should move topic history and outputs to persistent storage.
