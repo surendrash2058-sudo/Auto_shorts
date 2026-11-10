@@ -529,9 +529,65 @@ def anim_stickman(cv, d, t, p, txt, i):
     else:
         top, bot, ground = (255, 165, 90), (110, 70, 165), (65, 125, 85)
     # The cached scene gradient is supplied by anim_frame; avoid redrawing it per frame.
+    # Large, instantly readable visual actions: the story must make sense with sound off.
+    def arrow(x1, y1, x2, y2, color=(255, 225, 70), width=12):
+        d.line([(x1, y1), (x2, y2)], fill=color, width=width)
+        ang = math.atan2(y2-y1, x2-x1)
+        size = 25
+        left = (x2-size*math.cos(ang-0.55), y2-size*math.sin(ang-0.55))
+        right = (x2-size*math.cos(ang+0.55), y2-size*math.sin(ang+0.55))
+        d.polygon([(x2,y2), left, right], fill=color)
+
     if has(text, r"phone|screen|message|call"):
-        d.rounded_rectangle([485, 700, 565, 850], radius=12, fill=(25, 30, 45), outline=(230,240,255), width=5)
-        d.rectangle([495, 720, 555, 810], fill=(80, 190, 230))
+        px, py = 500, 430 - 100 * (0.5 + 0.5 * math.sin(t * 2))
+        d.rounded_rectangle([px-42, py-78, px+42, py+78], radius=14,
+                            fill=(22, 28, 42), outline=(245, 250, 255), width=7)
+        d.rounded_rectangle([px-29, py-58, px+29, py+48], radius=5, fill=(70, 190, 235))
+        d.ellipse([px-6, py+57, px+6, py+69], fill=(240,240,250))
+        arrow(px+70, py+55, px+70, py-90)
+    if has(text, r"car|vehicle|traffic"):
+        cx, cy = 510, 510 + 18 * math.sin(t * 2)
+        d.rounded_rectangle([cx-105, cy-48, cx+105, cy+20], radius=22,
+                            fill=(245, 170, 35), outline=(35, 30, 40), width=7)
+        d.polygon([(cx-65,cy-48),(cx-25,cy-95),(cx+50,cy-95),(cx+85,cy-48)],
+                  fill=(90,205,235), outline=(35,30,40))
+        for wx in (cx-65,cx+65):
+            d.ellipse([wx-25,cy+3,wx+25,cy+53], fill=(25,28,38), outline=(245,245,245), width=5)
+        if floating: arrow(cx+130,cy-10,cx+130,cy-150)
+    if has(text, r"ocean|water|sea|wave|flood"):
+        for k, base in enumerate((650, 720, 790)):
+            pts=[(xx, base+18*math.sin(xx/55+t*(2+k*.3)+k)) for xx in range(0,GW+20,20)]
+            d.polygon(pts+[(GW,GH),(0,GH)], fill=((35,145,220) if k==0 else (20,95,185) if k==1 else (12,60,145)))
+        if has(text, r"rise|lift|float|up"):
+            arrow(560,780,560,570,(255,235,90),10)
+    if has(text, r"air|breath|oxygen|atmosphere"):
+        for k in range(7):
+            bx=470+(k%3)*45+12*math.sin(t*2+k)
+            by=380+(k//3)*55-35*math.sin(t*2+k)
+            rr=9+(k%2)*5
+            d.ellipse([bx-rr,by-rr,bx+rr,by+rr], outline=(190,240,255), width=5)
+        if has(text, r"thin|gone|impossible|no air|cannot breathe"):
+            d.ellipse([460,490,510,540], outline=(255,80,80), width=8)
+            d.line([(460,490),(510,540)], fill=(255,80,80), width=8)
+    if has(text, r"earth|planet|world|gravity"):
+        ex, ey, er = 175, 430, 82
+        d.ellipse([ex-er,ey-er,ex+er,ey+er], fill=(35,115,210), outline=(210,235,255), width=6)
+        d.ellipse([ex-45,ey-45,ex-5,ey+10], fill=(70,175,95))
+        d.ellipse([ex+15,ey+5,ex+55,ey+48], fill=(70,175,95))
+        if has(text, r"no gravity|lost gravity|without gravity|disappear"):
+            for ang in (0, math.pi/2, math.pi, 3*math.pi/2):
+                sx=ex+105*math.cos(ang); sy=ey+105*math.sin(ang)
+                arrow(sx,sy,sx+65*math.cos(ang),sy+65*math.sin(ang),(255,220,70),8)
+    if has(text, r"fire|burn|flame|lava|volcano"):
+        for k in range(3):
+            fx=470+k*48; fh=95+18*math.sin(t*5+k)
+            d.polygon([(fx-28,590),(fx,590-fh),(fx+28,590)], fill=(255,105,20))
+            d.polygon([(fx-12,590),(fx,590-fh*.55),(fx+13,590)], fill=(255,220,55))
+    if has(text, r"ice|cold|snow|freeze"):
+        for k in range(5):
+            sx=470+k*38; sy=400+25*math.sin(t*2+k)
+            d.line([(sx-14,sy-14),(sx+14,sy+14)], fill=(205,240,255), width=6)
+            d.line([(sx-14,sy+14),(sx+14,sy-14)], fill=(205,240,255), width=6)
     floating = has(text, r"float|gravity|drift|space|rise|upward")
     running = has(text, r"run|chase|escape|rush|race")
     scared = has(text, r"danger|scared|panic|dangerous|collapse|crash")
@@ -603,9 +659,9 @@ def anim_frame(name, t, p, txt, i):
     if name.startswith("3d:"):
         return render3d(name[3:], t, p, txt.lower(), i)
     if name == "stickman":
-        # Cinematic 3D environment rendered first; Pip remains a crisp 2D overlay.
+        # Render the cinematic 3D world at the animation canvas size, then add 2D story action.
         kind = pick_3d(txt)
-        cv = render3d(kind[3:], t, p, txt.lower(), i)
+        cv = render3d(kind[3:], t, p, txt.lower(), i).resize((GW, GH), Image.BICUBIC)
     else:
         top, bot = ANIM_BG[name]
         cv = grad_bg(top, bot)
@@ -979,9 +1035,11 @@ def make_bg_func(scene_imgs, scene_texts, total, scene_anims=None, words=None):
     if scene_imgs or scene_anims:
         bounds = []
         if words:
+            # Match scene count to the narration: 2-word beats for normal modes,
+            # full storyboard scenes for stickman mode.
             for i in range(len(scene_texts)):
-                last_word = min(i * 2 + 1, len(words) - 1)
-                bounds.append(min(total, words[last_word][1] + words[last_word][2]))
+                last_index = min(max(round((i + 1) * len(words) / len(scene_texts)) - 1, 0), len(words) - 1)
+                bounds.append(min(total, words[last_index][1] + words[last_index][2]))
         else:
             weights = [max(len(t), 1) for t in scene_texts]
             acc = 0
@@ -1986,20 +2044,20 @@ def main():
     scene_texts = split_visual_pairs(todo["script"])
     scene_contexts = visual_context_pairs(todo["script"])
     if stickman_story:
+        # Use the actual storyboard (7-9 readable scenes), not dozens of 2-word cuts.
+        # Each scene stays on screen long enough to understand the physical action.
         story_scenes = stickman_story.get("scenes", [])
-        cumulative, limits = 0, []
+        scene_contexts = []
         for item in story_scenes:
-            cumulative += max(1, len(str(item.get("narration", "")).split()))
-            limits.append(cumulative)
-        enriched = []
-        for j, beat in enumerate(scene_contexts):
-            word_pos = j * 2 + 1
-            scene_index = next((k for k, limit in enumerate(limits) if word_pos <= limit), len(story_scenes)-1)
-            spec = story_scenes[max(0, scene_index)] if story_scenes else {}
-            enriched.append(beat + ". Scene: " + str(spec.get("visual", "")) +
-                            ". Action: " + str(spec.get("action", "")) +
-                            ". Emotion: " + str(spec.get("emotion", "")))
-        scene_contexts = enriched
+            scene_contexts.append(
+                "Narration: " + str(item.get("narration", "")) +
+                ". Visual: " + str(item.get("visual", "")) +
+                ". Action: " + str(item.get("action", "")) +
+                ". Emotion: " + str(item.get("emotion", "")) +
+                ". Camera: " + str(item.get("camera", "medium shot"))
+            )
+        if not scene_contexts:
+            scene_contexts = visual_context_pairs(todo["script"])
         scene_texts = scene_contexts
     scene_imgs, scene_anims, clip, is3d = None, None, None, False
     plan = None
