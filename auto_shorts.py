@@ -1855,6 +1855,44 @@ def prep_photo(path, dark=0.8):
 
 
 # ---------- picture sources ----------
+def fetch_cloudflare_image(prompt, path, seed):
+    """Generate one scene image with Cloudflare Workers AI FLUX.1 Schnell."""
+    account_id = os.environ.get("CLOUDFLARE_ACCOUNT_ID", "").strip()
+    api_token = os.environ.get("CLOUDFLARE_API_TOKEN", "").strip()
+    if not account_id or not api_token:
+        return False, "Cloudflare credentials are not configured"
+    endpoint = ("https://api.cloudflare.com/client/v4/accounts/" +
+                urllib.parse.quote(account_id, safe="") +
+                "/ai/run/@cf/black-forest-labs/flux-1-schnell")
+    payload = json.dumps({"prompt": str(prompt)[:2048], "steps": 4, "seed": int(seed)}).encode("utf-8")
+    req = urllib.request.Request(endpoint, data=payload, headers={
+        "Authorization": "Bearer " + api_token, "Content-Type": "application/json",
+        "User-Agent": "auto-shorts"}, method="POST")
+    last_error = None
+    for attempt in range(1, 3):
+        try:
+            with urllib.request.urlopen(req, timeout=180) as response:
+                body = response.read()
+                content_type = response.headers.get("Content-Type", "").lower()
+            if content_type.startswith("image/"):
+                path.write_bytes(body)
+            else:
+                result = json.loads(body.decode("utf-8"))
+                image_data = (result.get("result") or {}).get("image")
+                if not image_data:
+                    raise RuntimeError(str(result.get("errors") or result)[:500])
+                import base64
+                path.write_bytes(base64.b64decode(image_data))
+            with Image.open(path) as check:
+                check.verify()
+            return True, ""
+        except Exception as exc:
+            last_error = exc
+            path.unlink(missing_ok=True)
+            if attempt < 2:
+                time.sleep(3 * attempt)
+    return False, str(last_error)
+
 def fetch_pollinations(prompt, path, seed):
     try:
         url = ("https://image.pollinations.ai/prompt/" + urllib.parse.quote(prompt[:600]) +
@@ -1926,60 +1964,59 @@ def fetch_nasa_photo(query, path, pick=0):
 
 
 def fetch_scene_visuals(scenes, plan, slug):
-    """One realistic picture per scene. AI photo -> Pixabay -> NASA photo. None = use an animation."""
-    imgs, how, poll_ok = [], [], True
-    used_visuals = set()
-    for i, text in enumerate(scenes):
-        q = plan[i]["query"] or simple_query(text)
+    """Generate a separate AI image for every scene; use only relevant photo fallbacks."""
+    imgs, used_visuals = [], set()
+    cloudflare_ready = bool(os.environ.get("CLOUDFLARE_ACCOUNT_ID") and os.environ.get("CLOUDFLARE_API_TOKEN"))
+    print("Image provider:", "Cloudflare FLUX.1 Schnell" if cloudflare_ready else "Pollinations backup (Cloudflare secrets missing)")
+    for i, scene in enumerate(scenes):
+        item = plan[i] if i < len(plan) else {}
+        query = str(item.get("query") or simple_query(scene, n=5) or scene[:90])
+        image_prompt = str(item.get("image_prompt") or (
+            "Photorealistic cinematic movie still of this exact scene: " + str(scene)[:900] +
+            ". Realistic materials, believable scale and physics, dramatic natural lighting, "
+            "vertical portrait composition, no text, no logo, no cartoon, no illustration."))
         path = OUT / f"{slug}_scene{i}.jpg"
-        img, src = None, None
-        clean = re.sub(r"Follow for more.*$", "", text, flags=re.I).strip() or q
-        if poll_ok:
-            ok, err = fetch_pollinations(f"photorealistic cinematic 3D-rendered environment, Unreal Engine 5 quality, realistic materials, "
-                                         "physically based lighting, atmospheric depth, cinematic composition, vertical 9:16, "
-                                         f"{clean} {q}, sharp focus, high detail, no people, no characters, no text, no words", path, i * 11 + 3)
+        img, source = None, None
+        if cloudflare_ready:
+            ok, err = fetch_cloudflare_image(image_prompt, path, i * 17 + 29)
             if ok:
-                img, src = prep_photo(path, 0.9), "AI photo"
-                time.sleep(16)                      # free tier: about 1 picture per 15 seconds
+                img, source = prep_photo(path, 0.92), "Cloudflare FLUX AI"
             else:
-                poll_ok = False                     # don't waste time on the other scenes
-                print("   AI picture service not working:", err[:120])
-        if img is None and fetch_pixabay_photo(q, path, i):
-            img, src = prep_photo(path, 0.9), "Pixabay photo"
-        if img is None and fetch_pexels_photo(q, path, i):
-            img, src = prep_photo(path, 0.9), "Pexels photo"
-        if img is None and fetch_nasa_photo(q, path, i):
-            img, src = prep_photo(path, 0.9), "NASA photo"
+                print(f"   Cloudflare failed for scene {i + 1}: {err[:180]}")
+        if img is None:
+            backup_prompt = ("Photorealistic live-action cinematic movie still, realistic materials, "
+                             "believable scale, natural lighting, vertical portrait. Exact scene: " +
+                             image_prompt[:1000] + ". No cartoon, illustration, text, or watermark.")
+            ok, err = fetch_pollinations(backup_prompt, path, i * 11 + 3)
+            if ok:
+                img, source = prep_photo(path, 0.92), "Pollinations AI backup"
+                time.sleep(3)
+            else:
+                print(f"   Pollinations backup failed for scene {i + 1}: {err[:120]}")
+        if img is None and fetch_pixabay_photo(query, path, i):
+            img, source = prep_photo(path, 0.9), "Pixabay photo"
+        if img is None and fetch_pexels_photo(query, path, i):
+            img, source = prep_photo(path, 0.9), "Pexels photo"
+        if img is None and fetch_nasa_photo(query, path, i):
+            img, source = prep_photo(path, 0.9), "NASA photo"
             if "Images: NASA Image and Video Library (images.nasa.gov)" not in CREDITS:
                 CREDITS.append("Images: NASA Image and Video Library (images.nasa.gov)")
-        if img is None and plan[i].get("art"):
-            try:
-                img, src = render_art(plan[i]["art"]), "drawn illustration"
-            except Exception as e:
-                print("   drawing failed:", e)
         if img is not None:
             fingerprint = image_fingerprint(img)
             if fingerprint in used_visuals:
-                print(f"   duplicate picture rejected for beat {i + 1}; trying a unique illustration/fallback")
-                img, src = None, None
-                if plan[i].get("art"):
-                    try:
-                        candidate = render_art(plan[i]["art"])
-                        candidate_hash = image_fingerprint(candidate)
-                        if candidate_hash not in used_visuals:
-                            img, src = candidate, "unique drawn illustration"
-                    except Exception as e:
-                        print("   unique illustration failed:", e)
-            if img is not None:
-                used_visuals.add(image_fingerprint(img))
+                print(f"   duplicate image rejected for scene {i + 1}; not reusing it")
+                img, source = None, None
+            else:
+                used_visuals.add(fingerprint)
         imgs.append(img)
-        how.append(src or "unique fallback required")
-        print(f"  scene {i + 1}/{len(scenes)} [{q}] -> {how[-1]}")
+        print(f"  scene {i + 1}/{len(scenes)} [{query}] -> {source or 'no matching image'}")
     if not any(imgs):
-        print("WARNING: no real pictures could be downloaded (check internet). Using built-in animations.")
+        print("WARNING: no relevant images available; renderer will use its safe blank fallback.")
         return None
+    missing = sum(1 for image in imgs if image is None)
+    if missing:
+        print(f"WARNING: {missing} scene(s) have no matching image; unrelated images will not be substituted.")
     return imgs
-
 
 def pick_video_url(data):
     """Choose a portrait HD mp4 link from a Pexels video-search reply."""
@@ -2208,7 +2245,7 @@ def main():
     print("1/3 voice...")
     words = asyncio.run(make_voice(todo["script"], mp3))
     kw = todo.get("keywords") or todo["title"].replace("What if", "").strip(" ?")
-    mode = os.environ.get("VISUALS", "auto")   # cinematic (realistic scenes + 2D human) | auto | images | stock | anim | 3d
+    mode = os.environ.get("VISUALS", "auto")   # cinematic photorealistic scenes | auto | images | stock | anim | 3d
     scene_texts = split_visual_pairs(todo["script"])
     scene_contexts = visual_context_pairs(todo["script"])
     if stickman_story:
@@ -2235,9 +2272,9 @@ def main():
         print(f"Legacy stickman story ready: {len(stickman_story.get('scenes', []))} story scenes.")
     if mode == "cinematic":
         scene_anims = [pick_anim(t, todo["title"]) for t in scene_texts]
-        print(f"Cinematic cartoon-human story ready: {len(stickman_story.get('scenes', []))} scenes.")
+        print(f"Cinematic photorealistic storyboard ready: {len(stickman_story.get('scenes', []))} scenes.")
     if mode in ("auto", "images", "stock", "cinematic"):
-        print("Planning unique, narration-context visuals for every two-word beat...")
+        print("Planning scene-specific photorealistic visuals for the storyboard...")
         plan = plan_scenes(scene_contexts, todo["title"])
     if mode in ("auto", "stock"):
         print("Finding real moving footage for each scene...")
