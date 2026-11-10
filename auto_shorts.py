@@ -1067,7 +1067,60 @@ def validate_video(path):
     print(f"Video validation passed: 1080x1920, {duration:.1f}s, {path.stat().st_size:,} bytes.")
 
 
-def upload(mp4_path, title, description, tags, privacy="private"):
+
+def make_youtube_thumbnail(title, output_path):
+    """Generate a clean cinematic 1280x720 thumbnail for YouTube."""
+    image = Image.new("RGB", (1280, 720))
+    draw = ImageDraw.Draw(image)
+    top, bottom = (7, 13, 35), (42, 24, 78)
+    for y in range(720):
+        t = y / 719
+        color = tuple(int(top[i] * (1-t) + bottom[i] * t) for i in range(3))
+        draw.line((0, y, 1280, y), fill=color)
+    for radius, color in [(320, (55, 65, 135)), (235, (78, 83, 160)), (145, (110, 100, 190))]:
+        draw.ellipse((900-radius, 345-radius, 900+radius, 345+radius), outline=color, width=5)
+    draw.ellipse((790, 235, 1010, 455), fill=(28, 48, 105), outline=(150, 165, 235), width=5)
+    draw.rounded_rectangle((65, 55, 350, 108), radius=16, fill=(245, 176, 54))
+    draw.text((85, 67), "WHAT IF | EXPLAINED", font=get_font(24), fill=(15, 18, 34))
+    words = str(title).replace("#Shorts", "").split()
+    lines, line = [], ""
+    font = get_font(66)
+    for word in words:
+        candidate = (line + " " + word).strip()
+        if draw.textlength(candidate, font=font) > 690 and line:
+            lines.append(line)
+            line = word
+        else:
+            line = candidate
+    if line:
+        lines.append(line)
+    lines = lines[:3]
+    y = 225 if len(lines) == 3 else 275 if len(lines) == 2 else 330
+    for item in lines:
+        draw.text((65, y), item, font=font, fill=(255, 255, 255),
+                  stroke_width=2, stroke_fill=(5, 8, 20))
+        y += 90
+    draw.rounded_rectangle((65, 625, 370, 675), radius=14, fill=(245, 176, 54))
+    draw.text((88, 637), "WHAT IF UNLOCKED", font=get_font(22), fill=(15, 18, 34))
+    image.save(output_path, "JPEG", quality=90, optimize=True)
+    print("Created YouTube thumbnail:", output_path)
+    return output_path
+
+
+def upload_hashtags(title, extra=None):
+    """Create a concise topic-specific hashtag string for the description."""
+    words = re.findall(r"[A-Za-z0-9]+", str(title).lower())
+    blocked = {"what", "if", "the", "and", "with", "from", "would", "could", "should"}
+    topic_words = [word for word in words if len(word) > 3 and word not in blocked][:3]
+    tags = ["#WhatIf", "#Science", "#WhatIfUnlocked"]
+    tags.extend("#" + word.title() for word in topic_words)
+    if extra:
+        tags.extend("#" + re.sub(r"[^A-Za-z0-9]", "", str(word)).title()
+                    for word in extra if re.sub(r"[^A-Za-z0-9]", "", str(word)))
+    return " ".join(dict.fromkeys(tags))
+
+
+def upload(mp4_path, title, description, tags, privacy="private", thumbnail_path=None):
     from google.auth.transport.requests import Request
     from google.oauth2.credentials import Credentials
     from google_auth_oauthlib.flow import InstalledAppFlow
@@ -1108,6 +1161,15 @@ def upload(mp4_path, title, description, tags, privacy="private"):
             print("WARNING: YouTube did not apply the requested visibility. Check YouTube Studio and API project verification.")
     except Exception as exc:
         print("WARNING: Could not verify YouTube visibility automatically:", exc)
+    if thumbnail_path and Path(thumbnail_path).exists():
+        try:
+            yt.thumbnails().set(
+                videoId=video_id,
+                media_body=MediaFileUpload(str(thumbnail_path), mimetype="image/jpeg")
+            ).execute()
+            print("Custom YouTube thumbnail uploaded successfully.")
+        except Exception as exc:
+            print("WARNING: Video uploaded, but custom thumbnail upload failed:", exc)
     return video_id
 
 
@@ -1900,9 +1962,15 @@ def main():
     validate_video(mp4)
 
     if a.upload:
-        print("3/3 uploading...")
-        vid = upload(mp4, todo["title"] + " #Shorts",
-                     todo["script"] + "\n\n" + "\n".join(CREDITS) + "\n#Shorts #WhatIf", ["shorts", "what if"], a.privacy)
+        print("3/3 preparing YouTube metadata and thumbnail...")
+        thumbnail = OUT / f"{slug}_thumbnail.jpg"
+        make_youtube_thumbnail(todo["title"], thumbnail)
+        description = (todo["script"] + "\n\nExplore more science-based What If stories on What If Unlocked.\n\n"
+                       + upload_hashtags(todo["title"]) + "\n\n" + "\n".join(CREDITS))
+        tags = list(dict.fromkeys(["shorts", "what if", "what if unlocked", "science"] +
+                                  [str(x)[:30] for x in todo.get("tags", []) if str(x).strip()]))[:15]
+        vid = upload(mp4, todo["title"][:90] + " #Shorts", description, tags,
+                     a.privacy, thumbnail_path=thumbnail)
         print("Uploaded: https://youtube.com/watch?v=" + vid)
         todo["done"] = True
         TOPICS.write_text(json.dumps(topics, indent=2, ensure_ascii=False), encoding="utf-8")
