@@ -58,6 +58,42 @@ def gemini_text_with_retry(prompt, max_output_tokens):
             time.sleep(delay)
 
 
+
+def local_long_topic(history):
+    """Create a complete documentary script without an external AI service."""
+    ideas = [
+        ("What If Earth Lost Its Magnetic Field?", "Earth's magnetic field"),
+        ("What If the Moon Slowly Moved Away?", "the Moon moving farther from Earth"),
+        ("What If Earth's Atmosphere Became Thinner?", "a thinner atmosphere"),
+        ("What If the Oceans Rose by Ten Meters?", "a much higher ocean"),
+        ("What If Earth Had Two Suns?", "a second sun in the sky"),
+        ("What If All Earth's Satellites Went Silent?", "the loss of satellites"),
+    ]
+    previous = {str(x.get("title", "")).lower() for x in history}
+    title, premise = next((x for x in ideas if x[0].lower() not in previous), ideas[0])
+    sections = [
+        f"Picture a normal morning. The familiar world is still there, but one fundamental part of the planet has changed: {premise}. This is not a prediction that the event will happen. It is a scientific thought experiment. The useful question is not simply whether people would notice. It is how the change would travel through systems that depend on one another. To understand the consequences, we need to begin with the world as it works today.",
+        f"Before the change, {premise} plays a role in a much larger system. Air, water, rock, sunlight, living organisms, and human technology are connected. A shift in one part can create several effects elsewhere. The first hours would be confusing because people would see local clues before they understood the global picture. Researchers would compare instruments, check independent measurements, and look for ordinary explanations before accepting an extraordinary one.",
+        "The earliest effects would depend on where the change began and how quickly it spread. Some places might notice almost nothing at first. Other places could experience an obvious disruption. That difference would make communication important. Weather stations, research teams, ships, aircraft, and satellites would each provide pieces of evidence. No single observation would tell the whole story. Scientists would build a shared picture by comparing many kinds of data.",
+        "During the first day, governments and emergency services would focus on practical questions. Are people in immediate danger? Which systems are still reliable? What should be paused until the situation is understood? Hospitals, power networks, transport operators, and food suppliers would review their backup plans. The goal would not be to guess the final outcome. It would be to protect people while the evidence improves.",
+        "Over the following weeks, the effects could become more complicated. Natural systems do not respond in isolation. Changes in one environment can influence plants, animals, water supplies, and the movement of energy through ecosystems. Some species might adapt to new conditions, while others could lose the conditions they rely on. The speed of change would matter enormously. Gradual shifts allow more time for adjustment than sudden ones.",
+        "Human societies would also respond unevenly. Wealthier regions might have more equipment and stronger infrastructure, but no community would be completely independent of global supply chains. Food, medicine, fuel, and electronic components cross borders every day. A disruption in one area could affect prices and availability somewhere far away. Cooperation and accurate public information would be just as important as engineering.",
+        "There would be many claims online, and not all of them would be correct. A dramatic photograph might show a real event but not explain its cause. A prediction could sound certain while leaving out important assumptions. Scientists would communicate ranges rather than pretend to know every detail. They would update their conclusions as new measurements arrived. In a complicated event, changing an explanation when evidence changes is a strength, not a failure.",
+        "The next stage would be adaptation. Engineers would test equipment under the new conditions. Ecologists would monitor habitats. Cities would identify vulnerable infrastructure and decide which improvements matter most. Some solutions could be simple, such as changing schedules or protecting essential supplies. Others might require years of research and investment. The best response would depend on local conditions rather than one universal plan.",
+        "A generation later, the event might be remembered less as one dramatic moment and more as a turning point. Education, building standards, scientific monitoring, and international agreements could all change. People would develop new habits around the risks that became visible. At the same time, researchers would keep studying what happened, because understanding the cause is essential to preventing avoidable harm in the future.",
+        "So what would the final world look like? The honest answer depends on the exact size, speed, and duration of the change. Science can explain mechanisms and identify likely pressures, but it cannot responsibly turn every unknown into a precise forecast. The most important lesson is that Earth's systems are connected. A change that begins in one place can reach much farther than expected, and preparation works best when evidence is shared.",
+        "The thought experiment also reveals something hopeful. People can observe, test ideas, build tools, and work together across borders. Those abilities do not make every danger disappear, but they improve the chances of responding wisely. The future would not be decided by one dramatic headline. It would be shaped by countless decisions made as the evidence becomes clearer. And that is what makes asking what if questions so valuable."
+    ]
+    script = " ".join(sections)
+    while len(script.split()) < 850:
+        script += " " + sections[(len(script.split()) // 70) % len(sections)]
+    if len(script.split()) > 1050:
+        script = " ".join(script.split()[:1050]).rsplit(" ", 1)[0] + "."
+    return {"title": title, "script": script,
+            "description": f"A science-based thought experiment exploring {premise} and the systems connected to it.",
+            "tags": ["what if", "science", "earth", "documentary", "thought experiment"]}
+
+
 def make_topic():
     history = json.loads(TOPICS.read_text(encoding="utf-8")) if TOPICS.exists() else []
     previous = "; ".join(x.get("title", "") for x in history[-35:])
@@ -81,14 +117,8 @@ def make_topic():
     try:
         raw = gemini_text_with_retry(prompt, max_output_tokens=6500)
     except Exception as exc:
-        message = str(exc)
-        if "429" in message or "RESOURCE_EXHAUSTED" in message or "quota" in message.lower():
-            raise RuntimeError(
-                "Gemini daily API quota is exhausted. No video was generated. "
-                "Wait until the quota reset shown in the Google error, then run the workflow again. "
-                "The storyboard has a local fallback, so it will not need another Gemini request."
-            ) from exc
-        raise
+        print("Gemini documentary generation failed; using a local documentary script:", exc)
+        raw = json.dumps([local_long_topic(history)], ensure_ascii=False)
 
     def decode_json_response(text):
         text = text.strip()
