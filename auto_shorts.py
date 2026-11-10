@@ -529,27 +529,9 @@ def anim_stickman(cv, d, t, p, txt, i):
     else:
         top, bot, ground = (255, 165, 90), (110, 70, 165), (65, 125, 85)
     # The cached scene gradient is supplied by anim_frame; avoid redrawing it per frame.
-    if has(text, r"space|planet|earth|moon|gravity|float|orbit|star|sky"):
-        for a, b, cc, e in rv(("pipstars", i), 48):
-            x, yy = a * GW, (b * GH - t * (8 + cc * 10)) % GH
-            d.ellipse([x-2, yy-2, x+2, yy+2], fill=(255, 255, 220))
-    if has(text, r"ocean|water|sea|wave|flood|rain"):
-        for k in range(3):
-            yy = 850 + k * 95
-            pts = [(x, yy + 18 * math.sin(x / 60 + t * (1.3+k*.2))) for x in range(0, GW+20, 20)]
-            d.polygon(pts + [(GW, GH), (0, GH)], fill=(35, 125-k*20, 205-k*20))
-    elif has(text, r"ice|cold|snow|freeze"):
-        d.rectangle([0, 1030, GW, GH], fill=(220, 240, 252))
-    else:
-        d.rectangle([0, 1040, GW, GH], fill=ground)
     if has(text, r"phone|screen|message|call"):
         d.rounded_rectangle([485, 700, 565, 850], radius=12, fill=(25, 30, 45), outline=(230,240,255), width=5)
         d.rectangle([495, 720, 555, 810], fill=(80, 190, 230))
-    if has(text, r"sun|sunlight|bright"):
-        glow(cv, 570, 260, 95, (255, 210, 70), .8)
-        d.ellipse([520, 210, 620, 310], fill=(255, 220, 75))
-    if has(text, r"earth|planet|world|moon"):
-        put(cv, sphere_sprite(78, (40, 125, 220)), 540, 440)
     floating = has(text, r"float|gravity|drift|space|rise|upward")
     running = has(text, r"run|chase|escape|rush|race")
     scared = has(text, r"danger|scared|panic|dangerous|collapse|crash")
@@ -620,8 +602,13 @@ def pick_anim(scene_text, title=""):
 def anim_frame(name, t, p, txt, i):
     if name.startswith("3d:"):
         return render3d(name[3:], t, p, txt.lower(), i)
-    top, bot = ANIM_BG[name]
-    cv = grad_bg(top, bot)
+    if name == "stickman":
+        # Cinematic 3D environment rendered first; Pip remains a crisp 2D overlay.
+        kind = pick_3d(txt)
+        cv = render3d(kind[3:], t, p, txt.lower(), i)
+    else:
+        top, bot = ANIM_BG[name]
+        cv = grad_bg(top, bot)
     d = ImageDraw.Draw(cv)
     ANIMS[name](cv, d, t, min(max(p, 0.0), 1.0), txt.lower(), i)
     return cv.resize((W, H), Image.BICUBIC)
