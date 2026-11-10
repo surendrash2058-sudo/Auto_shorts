@@ -65,7 +65,7 @@ async def make_voice(text, mp3_path):
         words = []
         try:
             try:
-                comm = edge_tts.Communicate(text, voice, rate="-5%", pitch="-1Hz", volume="+0%", boundary="WordBoundary")
+                comm = edge_tts.Communicate(text, voice, rate="-7%", pitch="-2Hz", volume="+0%", boundary="WordBoundary")
             except TypeError:                  # older edge-tts versions
                 comm = edge_tts.Communicate(text, voice)
             with open(mp3_path, "wb") as audio_file:
@@ -1005,6 +1005,34 @@ def render(title, words, mp3_path, mp4_path, clip=None, scene_imgs=None, scene_t
         raise RuntimeError("ffmpeg failed. Is ffmpeg installed and on PATH?")
 
 
+# ---------- 3d. cinematic audio bed ----------
+
+def mix_background_music(video_path):
+    """Mix an optional licensed cinematic music bed under narration."""
+    music = HERE / "assets" / "background_music.mp3"
+    if not music.exists():
+        print("No assets/background_music.mp3 found; keeping clean narration-only audio.")
+        return
+    mixed = video_path.with_name(video_path.stem + "_mixed.mp4")
+    cmd = [
+        "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
+        "-i", str(video_path), "-stream_loop", "-1", "-i", str(music),
+        "-filter_complex",
+        "[0:a]volume=1.0[voice];"
+        "[1:a]volume=0.085,afade=t=in:st=0:d=1.2[music];"
+        "[voice][music]amix=inputs=2:duration=first:dropout_transition=2,"
+        "alimiter=limit=0.95[aout]",
+        "-map", "0:v", "-map", "[aout]", "-c:v", "copy",
+        "-c:a", "aac", "-b:a", "192k", "-shortest", str(mixed)
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+    if result.returncode or not mixed.exists() or mixed.stat().st_size < 100_000:
+        mixed.unlink(missing_ok=True)
+        raise RuntimeError("Cinematic music mix failed: " + (result.stderr or "")[-1600:])
+    os.replace(mixed, video_path)
+    print("Cinematic music bed mixed under narration at a low level.")
+
+
 # ---------- 4. upload ----------
 def validate_video(path):
     """Fail safely before upload if FFmpeg created a corrupt or non-Shorts file."""
@@ -1244,11 +1272,13 @@ def add_topics(topics, n, trends=None, front=False):
         "Target audience: viewers in the United States. Use natural, conversational American English, "
         "clear pronunciation-friendly wording, and examples familiar to US viewers when relevant; "
         "keep the science globally understandable and avoid forced slang. "
-        "Rules: 55-75 spoken words; open with a surprising, specific hook in the first 2 seconds; "
-        "use short, natural American English sentences that sound good when spoken aloud; "
-        "build curiosity with a clear beginning, escalating consequence, and satisfying final reveal; "
-        "keep claims scientifically accurate, never invent statistics, and say about when uncertain; "
-        "avoid filler, repeated phrases, awkward abbreviations, and hard-to-pronounce number strings; "
+        "Rules: 55-75 spoken words; open with a surprising, specific hook in the first 1-2 seconds; "
+        "write like a premium mini science documentary, not a list of facts; "
+        "use short, natural American English sentences for an expressive, confident narrator; "
+        "build a clear visual story: bold opening image, escalating consequences, one memorable reveal, "
+        "and a satisfying final line; create an unanswered question early and resolve it before the ending; "
+        "keep claims scientifically accurate, never invent statistics, and signal uncertainty honestly; "
+        "avoid filler, repeated phrases, awkward abbreviations, and hard-to-pronounce number strings; 
         "make the title compelling and accurate, ideally 35-65 characters, with no misleading clickbait; "
         "the last sentence is exactly: Follow for more what if stories.\n"
         "Also give 'keywords': 2 or 3 plain English words to search stock footage for the video background "
@@ -1701,7 +1731,7 @@ def render_with_scene_videos(title, words, mp3_path, mp4_path, clips, scene_text
     """Build a scene-matched video reel, then use the stable caption renderer."""
     total = words[-1][1] + words[-1][2] + 0.8
     weights = [max(len(t.split()), 1) for t in scene_texts]
-    transition = 0.22
+    transition = 0.35
     timeline_total = total + transition * max(0, len(scene_texts) - 1)
     durations = [timeline_total * w / sum(weights) for w in weights]
     if not any(clips):
@@ -1742,7 +1772,7 @@ def render_with_scene_videos(title, words, mp3_path, mp4_path, clips, scene_text
             next_label = f"[xf{i}]"
             offset = sum(durations[:i]) - transition * i
             filters.append(
-                f"{previous}{labels[i]}xfade=transition=fade:duration={transition:.2f}:"
+                f"{previous}{labels[i]}xfade=transition=smoothleft:duration={transition:.2f}:"
                 f"offset={offset:.3f}{next_label}"
             )
             previous = next_label
@@ -1850,6 +1880,7 @@ def main():
             render(todo["title"], words, mp3, mp4, clip, scene_imgs, scene_texts, scene_anims)
     else:
         render(todo["title"], words, mp3, mp4, clip, scene_imgs, scene_texts, scene_anims)
+    mix_background_music(mp4)
     print("Video ready:", mp4)
     validate_video(mp4)
 
