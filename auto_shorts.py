@@ -1200,11 +1200,45 @@ def gemini_text(prompt, max_output_tokens=4000):
     return response.text.strip()
 
 
+
+def local_short_topics(topics, n):
+    """Generate usable Shorts locally when Gemini is unavailable."""
+    ideas = [
+        ("What If Earth Stopped Spinning?", "Earth's rotation", "oceans, atmosphere, and the moving ground"),
+        ("What If the Moon Vanished Tonight?", "the Moon", "tides, night skies, and Earth's long-term stability"),
+        ("What If Every Volcano Erupted?", "volcanoes", "ash clouds, climate, and communities"),
+        ("What If the Sun Went Dark for One Day?", "sunlight", "light, heat, plants, and the food chain"),
+        ("What If Gravity Suddenly Became Weaker?", "gravity", "weight, oceans, and the way objects move"),
+        ("What If All Earth's Oceans Froze?", "the oceans", "sea ice, marine life, and the global climate"),
+        ("What If Humans Could Breathe Underwater?", "human underwater breathing", "deep pressure, exploration, and ocean ecosystems"),
+        ("What If Every Satellite Stopped Working?", "satellites", "navigation, weather forecasts, and communication"),
+    ]
+    existing = {str(t.get("title", "")).lower() for t in topics}
+    created = []
+    for title, subject, consequences in ideas:
+        if title.lower() in existing:
+            continue
+        script = (
+            f"Imagine waking up and discovering that {subject} had changed overnight. "
+            f"At first, the difference might seem small, but the effects would spread quickly. "
+            f"The first clues would appear in {consequences}. "
+            "Scientists would check measurements, compare observations, and separate what is known from what is still uncertain. "
+            "The biggest surprise is that one change rarely stays in one place. "
+            "It can affect connected systems in ways people do not expect. "
+            "Some consequences would appear immediately, while others could take years to become clear. "
+            "The outcome would depend on how the planet and its living systems respond. "
+            "Follow for more what if stories."
+        )
+        created.append({"title": title, "script": script, "keywords": subject})
+        if len(created) >= n:
+            break
+    print(f"Using {len(created)} locally generated Shorts topics because Gemini is unavailable.")
+    return (created + topics)
+
 def add_topics(topics, n, trends=None, front=False):
     """Ask Gemini for new original scripts inspired by current trends."""
     if not os.environ.get("GEMINI_API_KEY"):
-        print("GEMINI_API_KEY is not set, so no new topics were written.")
-        return topics
+        return local_short_topics(topics, n)
     prompt = (
         f"Write {n} NEW YouTube Shorts scripts for a 'What if' science channel.\n"
         "Target audience: viewers in the United States. Use natural, conversational American English, "
@@ -1226,11 +1260,15 @@ def add_topics(topics, n, trends=None, front=False):
                    "\nPick the topic idea that is trending most, and write an ORIGINAL script about it "
                    "with your own wording and a fresh angle. Never copy their titles or wording.\n")
     prompt += 'Reply with ONLY a JSON array like [{"title": "What if ...?", "script": "...", "keywords": "..."}]'
-    generated = gemini_text(prompt, max_output_tokens=4000)
-    have = {t["title"].lower() for t in topics}
-    new = [t for t in parse_topics(generated) if t["title"].lower() not in have][:n]
-    print(f"Added {len(new)} new topics.")
-    return (new + topics) if front else (topics + new)
+    try:
+        generated = gemini_text(prompt, max_output_tokens=4000)
+        have = {t["title"].lower() for t in topics}
+        new = [t for t in parse_topics(generated) if t["title"].lower() not in have][:n]
+        print(f"Added {len(new)} Gemini-generated topics.")
+        return (new + topics) if front else (topics + new)
+    except Exception as exc:
+        print("Gemini topic generation failed; switching to local scripts:", exc)
+        return local_short_topics(topics, n)
 def refill(topics, min_left=3, batch=7):
     if sum(1 for t in topics if not t.get("done")) >= min_left:
         return topics
