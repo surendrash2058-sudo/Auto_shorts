@@ -589,9 +589,15 @@ def anim_stickman(cv, d, t, p, txt, i):
             sx=470+k*38; sy=400+25*math.sin(t*2+k)
             d.line([(sx-14,sy-14),(sx+14,sy+14)], fill=(205,240,255), width=6)
             d.line([(sx-14,sy+14),(sx+14,sy-14)], fill=(205,240,255), width=6)
+    # Translate storyboard emotion words into unmistakable body language.
+    emotion_surprise = has(text, r"surpris|shock|astonish|unexpected|reveal")
+    emotion_fear = has(text, r"fear|scared|panic|terrifi|danger|threat|collapse|crash")
+    emotion_curiosity = has(text, r"curious|wonder|mystery|question|discover|investigat")
+    emotion_happy = has(text, r"happy|happily|joy|relief|smile|safe|success")
+    emotion_excited = has(text, r"excit|thrill|amazing|celebrat|victory")
     running = has(text, r"run|chase|escape|rush|race")
-    scared = has(text, r"danger|scared|panic|dangerous|collapse|crash")
-    jumping = has(text, r"jump|leap|launch|fly")
+    scared = emotion_fear
+    jumping = has(text, r"jump|leap|launch|fly") or emotion_excited
     phase = t * (5.0 if running else 2.4)
     x = 345 + (115 * math.sin(phase) if running else 42 * math.sin(t * 1.1))
     bob = 30 * abs(math.sin(phase)) if jumping or running else 12 * math.sin(t * 2.5)
@@ -602,7 +608,7 @@ def anim_stickman(cv, d, t, p, txt, i):
     d.line([(x, hip_y), (x-28-leg_swing, y)], fill=limb, width=13)
     d.line([(x, hip_y), (x+28+leg_swing, y)], fill=limb, width=13)
     shoulder_y = y - 205
-    arm_raise = 42 if scared or jumping or floating else 0
+    arm_raise = 58 if scared or emotion_surprise or jumping or floating else (24 if emotion_curiosity else 0)
     d.line([(x, shoulder_y), (x-55, shoulder_y+55-arm_raise)], fill=limb, width=12)
     d.line([(x, shoulder_y), (x+55, shoulder_y+55-arm_raise)], fill=limb, width=12)
     d.line([(x, y-205), (x, hip_y)], fill=limb, width=15)
@@ -610,10 +616,16 @@ def anim_stickman(cv, d, t, p, txt, i):
                (x+25, y-170), (x-22, y-175)], fill=(20, 210, 190))
     d.ellipse([x-46, y-355, x+46, y-263], fill=(20,24,35))
     d.ellipse([x-42, y-351, x+42, y-267], fill=(255,255,255))
-    d.ellipse([x-17, y-320, x-7, y-307], fill=(20,24,35))
-    d.ellipse([x+7, y-320, x+17, y-307], fill=(20,24,35))
-    if scared:
-        d.ellipse([x-8, y-288, x+8, y-272], fill=(35,25,35))
+    eye_r = 7 if emotion_surprise or scared else 5
+    d.ellipse([x-17-eye_r/3, y-322-eye_r/3, x-7+eye_r/3, y-307+eye_r/3], fill=(20,24,35))
+    d.ellipse([x+7-eye_r/3, y-322-eye_r/3, x+17+eye_r/3, y-307+eye_r/3], fill=(20,24,35))
+    if emotion_surprise or scared:
+        # Wide open mouth: a readable shock/fear reaction even on a small screen.
+        d.ellipse([x-10, y-292, x+10, y-267], fill=(35,25,35))
+    elif emotion_happy or emotion_excited:
+        d.arc([x-19, y-305, x+19, y-276], 5, 175, fill=(30,25,35), width=6)
+    elif emotion_curiosity:
+        d.arc([x-12, y-300, x+18, y-278], 195, 345, fill=(30,25,35), width=5)
     else:
         d.arc([x-14, y-298, x+14, y-278], 10, 170, fill=(30,25,35), width=4)
 
