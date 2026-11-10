@@ -1216,8 +1216,11 @@ def make_bg_func(scene_imgs, scene_texts, total, scene_anims=None, words=None, c
             img = scene_imgs[s] if scene_imgs else None
             if img is not None:
                 frame = kenburns(img, p, s)
-            else:
+            elif scene_anims and scene_anims[s] is not None:
                 frame = anim_frame(scene_anims[s], tl, p, scene_texts[s], s)
+            else:
+                # In cinematic mode, never replace a failed image with an unrelated cartoon animation.
+                frame = gradient(*PALETTES[0])
             if character_mode:
                 frame = draw_cartoon_human(frame, tl, p, scene_texts[s], s)
             return frame
@@ -2272,7 +2275,7 @@ def main():
         scene_anims = ["stickman"] * len(scene_texts)
         print(f"Legacy stickman story ready: {len(stickman_story.get('scenes', []))} story scenes.")
     if mode == "cinematic":
-        scene_anims = [pick_anim(t, todo["title"]) for t in scene_texts]
+        scene_anims = [None] * len(scene_texts)
         print(f"Cinematic photorealistic storyboard ready: {len(stickman_story.get('scenes', []))} scenes.")
     if mode in ("auto", "images", "stock", "cinematic"):
         print("Planning scene-specific photorealistic visuals for the storyboard...")
