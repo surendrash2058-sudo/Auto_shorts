@@ -1204,7 +1204,7 @@ def make_bg_func(scene_imgs, scene_texts, total, scene_anims=None, words=None, c
             # visual moment. A long visual moment stays longer; a short reveal stays brief.
             cumulative_words = 0
             for i in range(len(scene_texts)):
-                cumulative_words += max(1, len(re.findall(r"\\S+", str(scene_texts[i]))))
+                cumulative_words += max(1, len(re.findall(r"\S+", str(scene_texts[i]))))
                 last_index = min(cumulative_words - 1, len(words) - 1)
                 bounds.append(min(total, words[last_index][1] + words[last_index][2]))
         else:
@@ -1226,7 +1226,7 @@ def make_bg_func(scene_imgs, scene_texts, total, scene_anims=None, words=None, c
             if character_mode:
                 frame = draw_cartoon_human(frame, tl, p, scene_texts[s], s)
             # A clear branded CTA end card appears only on the final narration beat.
-            if s == len(scene_texts) - 1 and re.search(r"\\b(follow|subscribe)\\b", str(scene_texts[s]), re.I):
+            if s == len(scene_texts) - 1 and re.search(r"\b(follow|subscribe)\b", str(scene_texts[s]), re.I):
                 d = ImageDraw.Draw(frame)
                 d.rounded_rectangle([105, 1510, W - 105, 1715], radius=38,
                                     fill=(8, 14, 34), outline=(245, 210, 90), width=5)
@@ -1700,11 +1700,11 @@ def _visual_tokens(text):
 
 def fallback_visual_moments(script):
     """Create meaningful 6-10-word visual beats without changing narration order."""
-    tokens = re.findall(r"\\S+", script.strip())
+    tokens = re.findall(r"\S+", script.strip())
     sentences, current = [], []
     for token in tokens:
         current.append(token)
-        if re.search(r"[.!?][\"')\\]]*$", token):
+        if re.search(r"[.!?][\"')\]]*$", token):
             sentences.append(current)
             current = []
     if current:
@@ -1715,7 +1715,7 @@ def fallback_visual_moments(script):
         chunks, chunk = [], []
         for token in sentence:
             chunk.append(token)
-            if len(chunk) >= 8 and re.search(r"[,;:—-][\"')\\]]*$", token):
+            if len(chunk) >= 8 and re.search(r"[,;:—-][\"')\]]*$", token):
                 chunks.append(chunk)
                 chunk = []
             elif len(chunk) >= 11:
@@ -1746,7 +1746,7 @@ def plan_visual_moments(script, title):
         return fallback
 
     prompt = (
-        f"VIDEO TITLE: {title}\\nFULL NARRATION (do not rewrite):\\n{script}\\n\\n"
+        f"VIDEO TITLE: {title}\nFULL NARRATION (do not rewrite):\n{script}\n\n"
         "Act as a documentary film editor. Turn this narration into a visual storyboard. "
         "Choose a VARIABLE number of meaningful visual moments, normally 8-16 for a 55-75 word Short. "
         "Do NOT create one image per sentence, one image per line, or one image every few words. "
@@ -1772,7 +1772,7 @@ def plan_visual_moments(script, title):
     try:
         raw = gemini_text(prompt, max_output_tokens=7000)
         if raw.startswith("```"):
-            raw = raw.split("\\n", 1)[1].rsplit("```", 1)[0]
+            raw = raw.split("\n", 1)[1].rsplit("```", 1)[0]
         data = json.loads(raw)
         if not isinstance(data, list) or not 4 <= len(data) <= 20:
             raise ValueError("Storyboard must contain 4-20 visual moments.")
