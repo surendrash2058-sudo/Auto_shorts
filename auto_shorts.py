@@ -1200,10 +1200,12 @@ def make_bg_func(scene_imgs, scene_texts, total, scene_anims=None, words=None, c
     if scene_imgs or scene_anims:
         bounds = []
         if words:
-            # Match scene count to the narration: 2-word beats for normal modes,
-            # full storyboard scenes for stickman mode.
+            # Allocate screen time by the actual narration excerpt assigned to each
+            # visual moment. A long visual moment stays longer; a short reveal stays brief.
+            cumulative_words = 0
             for i in range(len(scene_texts)):
-                last_index = min(max(round((i + 1) * len(words) / len(scene_texts)) - 1, 0), len(words) - 1)
+                cumulative_words += max(1, len(re.findall(r"\\S+", str(scene_texts[i]))))
+                last_index = min(cumulative_words - 1, len(words) - 1)
                 bounds.append(min(total, words[last_index][1] + words[last_index][2]))
         else:
             weights = [max(len(t), 1) for t in scene_texts]
@@ -1223,6 +1225,15 @@ def make_bg_func(scene_imgs, scene_texts, total, scene_anims=None, words=None, c
                 frame = gradient(*PALETTES[0])
             if character_mode:
                 frame = draw_cartoon_human(frame, tl, p, scene_texts[s], s)
+            # A clear branded CTA end card appears only on the final narration beat.
+            if s == len(scene_texts) - 1 and re.search(r"\\b(follow|subscribe)\\b", str(scene_texts[s]), re.I):
+                d = ImageDraw.Draw(frame)
+                d.rounded_rectangle([105, 1510, W - 105, 1715], radius=38,
+                                    fill=(8, 14, 34), outline=(245, 210, 90), width=5)
+                d.text((W // 2, 1575), "FOLLOW  •  SUBSCRIBE", font=get_font(52),
+                       fill=(255, 225, 90), anchor="mm", stroke_width=2, stroke_fill=(0, 0, 0))
+                d.text((W // 2, 1650), "WHAT IF UNLOCKED", font=get_font(34),
+                       fill=(255, 255, 255), anchor="mm")
             return frame
 
         def f(t):
@@ -1681,26 +1692,120 @@ def split_scenes(script, min_words=10, max_scenes=7):
     return scenes
 
 
-def split_visual_pairs(script):
-    """Create one narration-synchronised visual beat for every two spoken words."""
-    tokens = re.findall(r"\S+", script.strip())
-    return [" ".join(tokens[i:i + 2]).strip() for i in range(0, len(tokens), 2) if tokens[i:i + 2]]
 
+def _visual_tokens(text):
+    """Normalize spoken words so storyboard coverage can be validated exactly."""
+    return re.findall(r"[a-z0-9]+(?:['’-][a-z0-9]+)?", str(text).lower())
+
+
+def fallback_visual_moments(script):
+    """Create meaningful 6-10-word visual beats without changing narration order."""
+    tokens = re.findall(r"\\S+", script.strip())
+    sentences, current = [], []
+    for token in tokens:
+        current.append(token)
+        if re.search(r"[.!?][\"')\\]]*$", token):
+            sentences.append(current)
+            current = []
+    if current:
+        sentences.append(current)
+
+    beats = []
+    for sentence in sentences:
+        chunks, chunk = [], []
+        for token in sentence:
+            chunk.append(token)
+            if len(chunk) >= 8 and re.search(r"[,;:—-][\"')\\]]*$", token):
+                chunks.append(chunk)
+                chunk = []
+            elif len(chunk) >= 11:
+                chunks.append(chunk)
+                chunk = []
+        if chunk:
+            if chunks and len(chunk) < 4:
+                chunks[-1].extend(chunk)
+            else:
+                chunks.append(chunk)
+        beats.extend(" ".join(part) for part in chunks if part)
+
+    merged = []
+    for beat in beats:
+        if merged and len(_visual_tokens(beat)) < 4:
+            merged[-1] += " " + beat
+        else:
+            merged.append(beat)
+    return [{"narration": beat, "visual": "Photorealistic cinematic visual illustrating: " + beat,
+             "continuity": "story"} for beat in merged]
+
+
+def plan_visual_moments(script, title):
+    """Ask Gemini for a variable-length visual storyboard, not one image per sentence/word pair."""
+    fallback = fallback_visual_moments(script)
+    if not os.environ.get("GEMINI_API_KEY"):
+        print("GEMINI_API_KEY missing; using semantic sentence/clause visual moments.")
+        return fallback
+
+    prompt = (
+        f"VIDEO TITLE: {title}\\nFULL NARRATION (do not rewrite):\\n{script}\\n\\n"
+        "Act as a documentary film editor. Turn this narration into a visual storyboard. "
+        "Choose a VARIABLE number of meaningful visual moments, normally 8-16 for a 55-75 word Short. "
+        "Do NOT create one image per sentence, one image per line, or one image every few words. "
+        "A single narration sentence may need several distinct visual moments (for example: a person "
+        "imagining something, the object being imagined, then a full-black-frame reveal). Conversely, "
+        "keep one visual on screen across several narration words when the same action or place continues. "
+        "Change the picture only when the viewer needs a genuinely new subject, action, location, reaction, "
+        "scale, or important story reveal. Build a beginning-to-end visual sequence with cause and effect. "
+        "Keep connected moments visually continuous: reuse the same person, clothing, location, time of day, "
+        "weather, architecture, and visual palette when the story stays in the same place. Vary camera framing "
+        "instead of randomly changing the world. Include meaningful reaction shots, establishing shots, "
+        "close-ups, objects, clocks, landscapes, animals, and environment details when the narration calls "
+        "for them. Include a brief full-black visual only when the story calls for a blackout or disappearance. "
+        "For the final follow/subscribe narration, make the final visual a dedicated clean end card with "
+        "space for a FOLLOW / SUBSCRIBE overlay. No recurring cartoon or stickman character. "
+        "Return JSON only, as an array of objects with: narration (an EXACT consecutive excerpt from the "
+        "provided narration; preserve every spoken word, in order, with no omissions or additions), "
+        "visual (specific visible action and composition), and continuity (short anchor such as 'same city' "
+        "or 'underground shelter'; use the same anchor for connected shots). "
+        "The narration excerpts concatenated in order MUST reproduce the full narration exactly. "
+        "No markdown fences."
+    )
+    try:
+        raw = gemini_text(prompt, max_output_tokens=7000)
+        if raw.startswith("```"):
+            raw = raw.split("\\n", 1)[1].rsplit("```", 1)[0]
+        data = json.loads(raw)
+        if not isinstance(data, list) or not 4 <= len(data) <= 20:
+            raise ValueError("Storyboard must contain 4-20 visual moments.")
+        beats = []
+        for item in data:
+            if not isinstance(item, dict):
+                raise ValueError("Invalid visual moment.")
+            narration = str(item.get("narration") or "").strip()
+            visual = str(item.get("visual") or "").strip()
+            continuity = str(item.get("continuity") or "story").strip()
+            if not narration or not visual:
+                raise ValueError("A visual moment is missing narration or visual details.")
+            beats.append({"narration": narration, "visual": visual[:700],
+                          "continuity": continuity[:80] or "story"})
+        combined = [word for beat in beats for word in _visual_tokens(beat["narration"])]
+        original = _visual_tokens(script)
+        if combined != original:
+            raise ValueError("Storyboard narration excerpts did not cover the script exactly in order.")
+        print(f"Gemini planned {len(beats)} meaningful visual moments from {len(original)} spoken words.")
+        return beats
+    except Exception as exc:
+        print("Gemini visual storyboard failed; using safe semantic fallback:", exc)
+        return fallback
+
+
+def split_visual_pairs(script):
+    """Backward-compatible name: now returns semantic visual moments, not two-word pairs."""
+    return [beat["narration"] for beat in fallback_visual_moments(script)]
 
 
 def visual_context_pairs(script, context_words=5):
-    """Keep a two-word anchor for every shot, with nearby narration for meaning."""
-    tokens = re.findall(r"\S+", script.strip())
-    beats = []
-    for i in range(0, len(tokens), 2):
-        pair = " ".join(tokens[i:i + 2]).strip()
-        if not pair:
-            continue
-        left = max(0, i - context_words)
-        right = min(len(tokens), i + 2 + context_words)
-        context = " ".join(tokens[left:right])
-        beats.append(f"Exact spoken words: {pair}. Full visual context: {context}")
-    return beats
+    """Backward-compatible context builder; main uses the richer Gemini storyboard."""
+    return ["Narration: " + beat for beat in split_visual_pairs(script)]
 
 
 def file_fingerprint(path):
@@ -1752,7 +1857,7 @@ def cat_query(scene_text, title=""):
 
 # ---------- scene planning (Gemini) + drawn illustrations ----------
 def plan_scenes(texts, title):
-    """Create a specific photorealistic image prompt and search query per scene."""
+    """Create photorealistic images for meaningful moments with continuity anchors."""
     plan = [{"query": simple_query(t, n=5) or t[:90], "image_prompt":
              ("Photorealistic cinematic movie still showing this exact scene: " + str(t)[:900] +
               ". Real-world details, believable scale and materials, natural cinematic lighting, " +
@@ -1765,11 +1870,12 @@ def plan_scenes(texts, title):
         listing = "\n".join(f"{i + 1}. {t}" for i, t in enumerate(texts))
         prompt = (
             f"Video title: {title}\nCreate a photorealistic shot-by-shot storyboard.\n{listing}\n\n"
-            "For every numbered scene return a concise 3-6 word query and a detailed standalone "
-            "image_prompt of 60-100 words. Describe the exact visible subject and action, setting, "
-            "time/weather, foreground/background, camera distance and angle, lighting, and emotional "
-            "atmosphere. Depict the actual narration event, not just the broad topic. Preserve continuity "
-            "where scenes share a place or object, while varying shot scale and camera angle. Use "
+            "For every numbered visual moment return a concise 3-6 word query and a detailed image_prompt "
+            "of 60-100 words. Each input includes its exact narration, visual moment, and continuity anchor. "
+            "Depict the specified visible action, not merely the broad topic. When adjacent moments share a "
+            "continuity anchor, preserve the same people, clothing, location, architecture, time, weather, "
+            "props, and color palette; change only camera distance, angle, or the action that naturally follows. "
+            "Do not invent a new location or unrelated people. Use "
             "photorealistic live-action movie-still quality, realistic materials, believable anatomy "
             "and physics, cinematic depth of field, vertical 9:16 composition. If a person is essential, "
             "show a realistic live-action person. Do not invent unrelated people or objects. No text, "
@@ -2243,8 +2349,15 @@ def main():
     words = asyncio.run(make_voice(todo["script"], mp3))
     kw = todo.get("keywords") or todo["title"].replace("What if", "").strip(" ?")
     mode = os.environ.get("VISUALS", "auto")   # cinematic photorealistic scenes | auto | images | stock | anim | 3d
-    scene_texts = split_visual_pairs(todo["script"])
-    scene_contexts = visual_context_pairs(todo["script"])
+    storyboard = plan_visual_moments(todo["script"], todo["title"])
+    scene_texts = [beat["narration"] for beat in storyboard]
+    scene_contexts = [
+        "Exact narration: " + beat["narration"] +
+        ". Visual moment: " + beat["visual"] +
+        ". Continuity anchor: " + beat["continuity"]
+        for beat in storyboard
+    ]
+    print(f"Visual storyboard: {len(storyboard)} meaningful moments; pictures change only for story-relevant visual changes.")
     scene_imgs, scene_anims, clip, is3d = None, None, None, False
     plan = None
     scene_videos = None
