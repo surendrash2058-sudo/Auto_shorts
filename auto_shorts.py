@@ -2219,7 +2219,7 @@ def main():
 
     topics = json.loads(TOPICS.read_text(encoding="utf-8"))
     stickman_story = None
-    if os.environ.get("VISUALS", "").lower() in ("stickman", "cinematic"):
+    if os.environ.get("VISUALS", "").lower() == "cinematic":
         from stickman_story import generate as generate_stickman_story
         stickman_story = generate_stickman_story(os.environ.get("STICKMAN_TOPIC") or None)
         todo = {"title": stickman_story["title"], "script": stickman_story["narration"],
@@ -2271,12 +2271,9 @@ def main():
     scene_imgs, scene_anims, clip, is3d = None, None, None, False
     plan = None
     scene_videos = None
-    if mode == "stickman":
-        scene_anims = ["stickman"] * len(scene_texts)
-        print(f"Legacy stickman story ready: {len(stickman_story.get('scenes', []))} story scenes.")
     if mode == "cinematic":
         scene_anims = [None] * len(scene_texts)
-        print(f"Cinematic photorealistic storyboard ready: {len(stickman_story.get('scenes', []))} scenes.")
+        print(f"Cinematic environment-led storyboard ready: {len(stickman_story.get('scenes', []))} scenes.")
     if mode in ("auto", "images", "stock", "cinematic"):
         print("Planning scene-specific photorealistic visuals for the storyboard...")
         plan = plan_scenes(scene_contexts, todo["title"])
