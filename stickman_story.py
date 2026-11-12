@@ -19,7 +19,7 @@ import sys
 import time
 from pathlib import Path
 
-DEFAULT_OUTPUT = Path("output/stickman_story.json")
+DEFAULT_OUTPUT = Path("output/cinematic_story.json")
 MIN_WORDS = 85
 MAX_WORDS = 135
 MIN_SCENES = 7
@@ -74,7 +74,6 @@ def fallback_story(topic: str | None = None) -> dict:
         "title": title[:85],
         "hook": "Imagine letting go of your phone… and watching it float away.",
         "narration": narration,
-        "characters": [],
         "scenes": scenes,
         "visual_style": "cinematic photorealistic 3D environments, realistic materials, dramatic lighting, atmospheric depth, no cartoon characters or illustrated humans",
         "music_mood": "playful curiosity that builds into suspense",
@@ -141,7 +140,6 @@ Return ONLY valid JSON in this exact structure:
   "title": "short accurate title",
   "hook": "opening hook",
   "narration": "complete voiceover, 85-135 words",
-  "characters": [],
   "scenes": [
     {{
       "scene": 1,
@@ -161,7 +159,7 @@ Return ONLY valid JSON in this exact structure:
 
 
 def validate(data: dict) -> dict:
-    required = ("title", "hook", "narration", "characters", "scenes", "visual_style")
+    required = ("title", "hook", "narration", "scenes", "visual_style")
     missing = [key for key in required if not data.get(key)]
     if missing:
         raise ValueError("Missing required fields: " + ", ".join(missing))
@@ -195,50 +193,6 @@ def is_fatal_auth_error(exc: Exception) -> bool:
         "API_KEY_INVALID", "INVALID API KEY", "PERMISSION_DENIED",
         "UNAUTHENTICATED", "401", "403",
     ))
-
-
-def generate_with_openai(topic: str | None) -> dict | None:
-    """Use OpenAI only after Gemini has failed or is not configured."""
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        print("OPENAI_API_KEY not set; OpenAI backup unavailable.", file=sys.stderr)
-        return None
-
-    try:
-        from openai import OpenAI
-        client = OpenAI(api_key=api_key, timeout=45.0, max_retries=1)
-    except Exception as exc:
-        print(f"Could not initialize OpenAI backup: {exc}", file=sys.stderr)
-        return None
-
-    model = os.getenv("OPENAI_MODEL", "gpt-4o-mini").strip()
-    prompt = build_prompt(topic)
-    for attempt in range(1, 3):
-        try:
-            print(f"Trying OpenAI backup model {model} (attempt {attempt}/2).", file=sys.stderr)
-            response = client.chat.completions.create(
-                model=model,
-                messages=[
-                    {"role": "system", "content": "You are an expert YouTube Shorts story writer. Return only valid JSON matching the requested schema."},
-                    {"role": "user", "content": prompt},
-                ],
-                response_format={"type": "json_object"},
-                temperature=0.85,
-                max_tokens=5000,
-            )
-            content = response.choices[0].message.content
-            if not content:
-                raise RuntimeError("OpenAI returned an empty response.")
-            story = validate(extract_json(content))
-            print(f"Story generated successfully with OpenAI backup ({model}).", file=sys.stderr)
-            return story
-        except Exception as exc:
-            print(f"OpenAI backup attempt {attempt} failed: {exc}", file=sys.stderr)
-            if attempt == 1 and is_retryable_error(exc):
-                time.sleep(3)
-                continue
-            break
-    return None
 
 
 def generate(topic: str | None) -> dict:
@@ -306,13 +260,9 @@ def generate(topic: str | None) -> dict:
 
             print(f"All Gemini models failed. Last error: {last_error}", file=sys.stderr)
     else:
-        print("GEMINI_API_KEY not set; skipping Gemini and trying OpenAI backup.", file=sys.stderr)
+        print("GEMINI_API_KEY not set; using the built-in story fallback.", file=sys.stderr)
 
-    openai_story = generate_with_openai(topic)
-    if openai_story is not None:
-        return openai_story
-
-    print("Gemini and OpenAI unavailable; using built-in sample story.", file=sys.stderr)
+    print("Gemini unavailable; using built-in sample story.", file=sys.stderr)
     return validate(fallback_story(topic))
 
 def main():
@@ -330,7 +280,6 @@ def main():
     print(f"Title: {story['title']}")
     print(f"Narration words: {word_count(story['narration'])}")
     print(f"Scenes: {len(story['scenes'])}")
-    print("Characters: " + ", ".join(c["name"] for c in story["characters"]))
 
 
 if __name__ == "__main__":
