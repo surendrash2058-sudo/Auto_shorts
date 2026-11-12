@@ -161,8 +161,21 @@ Return ONLY valid JSON in this exact structure:
 
 
 def validate(data: dict) -> dict:
-    required = ("title", "hook", "narration", "characters", "scenes", "visual_style")
-    missing = [key for key in required if not data.get(key)]
+    if not isinstance(data, dict):
+        raise ValueError("Story response must be a JSON object.")
+
+    # Characters are optional for environment-led stories. An empty list is valid,
+    # and older/model responses that omit the field should normalize to no characters.
+    data.setdefault("characters", [])
+    if not isinstance(data["characters"], list):
+        raise ValueError("Story field 'characters' must be a JSON array.")
+
+    required = ("title", "hook", "narration", "scenes", "visual_style")
+    missing = [
+        key for key in required
+        if key not in data or data[key] is None
+        or (isinstance(data[key], str) and not data[key].strip())
+    ]
     if missing:
         raise ValueError("Missing required fields: " + ", ".join(missing))
     count = word_count(data["narration"])
