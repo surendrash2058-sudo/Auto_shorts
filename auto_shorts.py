@@ -2218,14 +2218,7 @@ def main():
         a.privacy = os.environ.get("PRIVACY", a.privacy)
 
     topics = json.loads(TOPICS.read_text(encoding="utf-8"))
-    stickman_story = None
-    if os.environ.get("VISUALS", "").lower() == "cinematic":
-        from stickman_story import generate as generate_stickman_story
-        stickman_story = generate_stickman_story(os.environ.get("STICKMAN_TOPIC") or None)
-        todo = {"title": stickman_story["title"], "script": stickman_story["narration"],
-                "keywords": "cinematic science story", "tags": ["what if", "science", "cinematic"]}
-    else:
-        todo = None
+    todo = None
     if a.list:
         for i, t in enumerate(topics):
             print(("[x] " if t.get("done") else "[ ] ") + t["title"])
@@ -2252,28 +2245,12 @@ def main():
     mode = os.environ.get("VISUALS", "auto")   # cinematic photorealistic scenes | auto | images | stock | anim | 3d
     scene_texts = split_visual_pairs(todo["script"])
     scene_contexts = visual_context_pairs(todo["script"])
-    if stickman_story:
-        # Use the actual storyboard (7-9 readable scenes), not dozens of 2-word cuts.
-        # Each scene stays on screen long enough to understand the physical action.
-        story_scenes = stickman_story.get("scenes", [])
-        scene_contexts = []
-        for item in story_scenes:
-            scene_contexts.append(
-                "Narration: " + str(item.get("narration", "")) +
-                ". Visual: " + str(item.get("visual", "")) +
-                ". Action: " + str(item.get("action", "")) +
-                ". Emotion: " + str(item.get("emotion", "")) +
-                ". Camera: " + str(item.get("camera", "medium shot"))
-            )
-        if not scene_contexts:
-            scene_contexts = visual_context_pairs(todo["script"])
-        scene_texts = scene_contexts
     scene_imgs, scene_anims, clip, is3d = None, None, None, False
     plan = None
     scene_videos = None
     if mode == "cinematic":
         scene_anims = [None] * len(scene_texts)
-        print(f"Cinematic environment-led storyboard ready: {len(stickman_story.get('scenes', []))} scenes.")
+        print(f"Cinematic environment-led visuals enabled for {len(scene_texts)} narration-matched scenes.")
     if mode in ("auto", "images", "stock", "cinematic"):
         print("Planning scene-specific photorealistic visuals for the storyboard...")
         plan = plan_scenes(scene_contexts, todo["title"])
