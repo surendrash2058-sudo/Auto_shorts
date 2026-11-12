@@ -152,20 +152,30 @@ def make_topic():
             raise
         try:
             data = decode_json_response(repaired)
-        except json.JSONDecodeError as repair_error:
-            raise RuntimeError(
-                "Gemini returned invalid JSON twice; first error: "
-                + str(first_error) + "; repair error: " + str(repair_error)
-            ) from repair_error
-    if not isinstance(data, list) or not data:
-        raise RuntimeError("Gemini did not return a long-video topic.")
+        except (json.JSONDecodeError, ValueError, TypeError) as repair_error:
+            print(
+                "Gemini JSON repair failed; using the built-in documentary fallback. "
+                f"Original error: {first_error}; repair error: {repair_error}"
+            )
+            data = [local_long_topic(history)]
+
+    # Normalize common model response shapes and validate before reading fields.
+    if isinstance(data, dict):
+        data = [data]
+    if not isinstance(data, list) or not data or not isinstance(data[0], dict):
+        print("Gemini returned an unusable topic structure; using local fallback.")
+        data = [local_long_topic(history)]
     item = data[0]
     title, script = str(item.get("title", "")).strip(), str(item.get("script", "")).strip()
+    if not title or len(script.split()) < 850:
+        print("Gemini topic is missing a title or has a short script; using local fallback.")
+        item = local_long_topic(history)
+        title, script = item["title"], item["script"]
     count = len(script.split())
     if count > 1100:
         # Trim an overlong response locally instead of spending another API request.
         kept, words_kept = [], 0
-        for sentence in re.split(r"(?<=[.!?])\\s+", script):
+        for sentence in re.split(r"(?<=[.!?])\s+", script):
             sentence_words = sentence.split()
             if words_kept + len(sentence_words) > 1050:
                 break
