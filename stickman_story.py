@@ -75,6 +75,7 @@ def fallback_story(topic: str | None = None) -> dict:
         "hook": "Imagine letting go of your phone… and watching it float away.",
         "narration": narration,
         "scenes": scenes,
+        "characters": [],  # Environment-led videos do not use recurring characters.
         "visual_style": "cinematic photorealistic 3D environments, realistic materials, dramatic lighting, atmospheric depth, no cartoon characters or illustrated humans",
         "music_mood": "playful curiosity that builds into suspense",
         "sound_effects": ["soft pop", "cartoon whoosh", "rising wind", "dramatic impact"],
@@ -159,6 +160,11 @@ Return ONLY valid JSON in this exact structure:
 
 
 def validate(data: dict) -> dict:
+    # Backward compatibility: this channel uses environment-led scenes, so a
+    # missing character list means no recurring characters, not a failed story.
+    data.setdefault("characters", [])
+    if data["characters"] is None:
+        data["characters"] = []
     required = ("title", "hook", "narration", "scenes", "visual_style")
     missing = [key for key in required if not data.get(key)]
     if missing:
