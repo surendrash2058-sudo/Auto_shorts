@@ -1841,8 +1841,8 @@ realistic live action movie still showing""".split())
 def scene_description(text):
     """Return the actual narrated action, excluding storyboard labels and continuity metadata."""
     value = str(text or "")
-    narration = re.search(r"Exact narration:\\s*(.*?)(?:\\. Visual moment:|$)", value, re.I | re.S)
-    visual = re.search(r"Visual moment:\\s*(.*?)(?:\\. Continuity anchor:|$)", value, re.I | re.S)
+    narration = re.search(r"Exact narration:\s*(.*?)(?:\. Visual moment:|$)", value, re.I | re.S)
+    visual = re.search(r"Visual moment:\s*(.*?)(?:\. Continuity anchor:|$)", value, re.I | re.S)
     if narration or visual:
         parts = []
         if visual:
