@@ -2243,7 +2243,9 @@ def render_with_scene_videos(title, words, mp3_path, mp4_path, clips, scene_text
     durations = [max(0.08, end - start) for start, end in zip(starts, boundaries)]
     if len(durations) != len(scene_texts) or not durations:
         raise RuntimeError("Could not align visual moments to narration timestamps.")
-    transition = 0.18
+    # Keep the final visual alive through the audio tail.
+    if durations:
+        durations[-1] += max(0.0, total - sum(durations))
     if not any(clips):
         return False
 
@@ -2277,18 +2279,13 @@ def render_with_scene_videos(title, words, mp3_path, mp4_path, clips, scene_text
     if len(labels) == 1:
         final_label = labels[0]
     else:
-        previous = labels[0]
-        for i in range(1, len(labels)):
-            next_label = f"[xf{i}]"
-            offset = sum(durations[:i]) - transition * i
-            filters.append(
-                f"{previous}{labels[i]}xfade=transition=smoothleft:duration={transition:.2f}:"
-                f"offset={offset:.3f}{next_label}"
-            )
-            previous = next_label
-        final_label = previous
-
-    filters.append(f"{final_label}null[outv]")
+        # Hard cuts at TTS-derived boundaries: xfade overlaps shift every later
+        # scene away from the words it is meant to illustrate.
+        concat_inputs = "".join(labels)
+        filters.append(f"{concat_inputs}concat=n={len(labels)}:v=1:a=0[outv]")
+        final_label = None
+    if final_label is not None:
+        filters.append(f"{final_label}null[outv]")
     cmd += ["-filter_complex", ";".join(filters), "-map", "[outv]", "-an",
             "-t", f"{total:.3f}", "-c:v", "libx264", "-preset", "veryfast",
             "-pix_fmt", "yuv420p", "-movflags", "+faststart", str(reel_path)]
