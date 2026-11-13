@@ -1304,7 +1304,7 @@ def generate_scene_sound_effects(scene_texts, words, output_path):
     """Create subtle, royalty-free cinematic transition sounds locally (no API/key)."""
     import math
     import random
-    import struct
+    from array import array
     import wave
 
     sample_rate = 22050
@@ -1351,10 +1351,13 @@ def generate_scene_sound_effects(scene_texts, words, output_path):
         wav.setnchannels(2)
         wav.setsampwidth(2)
         wav.setframerate(sample_rate)
+        pcm = array("h")
         for sample in audio:
-            value = max(-1.0, min(1.0, sample))
-            packed = struct.pack("<hh", int(value * 32767), int(value * 32767))
-            wav.writeframesraw(packed)
+            value = int(max(-1.0, min(1.0, sample)) * 32767)
+            pcm.extend((value, value))
+        if sys.byteorder != "little":
+            pcm.byteswap()
+        wav.writeframesraw(pcm.tobytes())
 
 
 def mix_background_music(video_path, scene_texts=None, words=None):
