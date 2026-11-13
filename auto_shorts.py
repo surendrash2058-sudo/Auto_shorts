@@ -2104,6 +2104,19 @@ def fetch_cloudflare_image(prompt, path, seed):
             with Image.open(path) as check:
                 check.verify()
             return True, ""
+        except urllib.error.HTTPError as exc:
+            # Preserve Cloudflare's JSON error body; the previous log hid the
+            # actual reason behind the unhelpful "HTTP Error 400" message.
+            try:
+                detail = exc.read().decode("utf-8", errors="replace")
+            except Exception:
+                detail = ""
+            last_error = RuntimeError(f"Cloudflare HTTP {exc.code}: {detail[:900] or exc.reason}")
+            path.unlink(missing_ok=True)
+            if attempt < 2 and exc.code in (408, 429, 500, 502, 503, 504):
+                time.sleep(3 * attempt)
+            else:
+                break
         except Exception as exc:
             last_error = exc
             path.unlink(missing_ok=True)
