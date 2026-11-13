@@ -2373,6 +2373,15 @@ def main():
     if mode in ("auto", "images", "cinematic"):
         print("Preparing photorealistic scene backgrounds...")
         scene_imgs = fetch_scene_visuals(scene_contexts, plan, slug)
+        # Never let missing scene assets become blank gradient frames in a finished Short.
+        # A partially generated storyboard is not safe to render or upload.
+        if scene_imgs is not None:
+            missing_visuals = [i + 1 for i, image in enumerate(scene_imgs) if image is None]
+            if missing_visuals:
+                raise RuntimeError(
+                    "Visual quality gate blocked this Short: no valid matching image for storyboard "
+                    f"moment(s) {missing_visuals}. Refusing to render or upload blank/unrelated scenes."
+                )
     if not scene_imgs and not scene_videos and mode in ("auto", "stock"):
         clip = fetch_clip(kw, OUT / f"{slug}_bg.mp4")
     if not clip and mode in ("3d", "anim", "auto", "images"):
