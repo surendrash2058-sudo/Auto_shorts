@@ -1433,44 +1433,47 @@ def validate_video(path):
 
 
 
-def make_youtube_thumbnail(title, output_path):
-    """Generate a clean cinematic 1280x720 thumbnail for YouTube."""
-    image = Image.new("RGB", (1280, 720))
-    draw = ImageDraw.Draw(image)
-    top, bottom = (7, 13, 35), (42, 24, 78)
-    for y in range(720):
-        t = y / 719
-        color = tuple(int(top[i] * (1-t) + bottom[i] * t) for i in range(3))
-        draw.line((0, y, 1280, y), fill=color)
-    for radius, color in [(320, (55, 65, 135)), (235, (78, 83, 160)), (145, (110, 100, 190))]:
-        draw.ellipse((900-radius, 345-radius, 900+radius, 345+radius), outline=color, width=5)
-    draw.ellipse((790, 235, 1010, 455), fill=(28, 48, 105), outline=(150, 165, 235), width=5)
-    draw.rounded_rectangle((65, 55, 350, 108), radius=16, fill=(245, 176, 54))
-    draw.text((85, 67), "WHAT IF | EXPLAINED", font=get_font(24), fill=(15, 18, 34))
-    words = str(title).replace("#Shorts", "").split()
-    lines, line = [], ""
-    font = get_font(66)
-    for word in words:
-        candidate = (line + " " + word).strip()
-        if draw.textlength(candidate, font=font) > 690 and line:
-            lines.append(line)
-            line = word
-        else:
-            line = candidate
-    if line:
-        lines.append(line)
-    lines = lines[:3]
-    y = 225 if len(lines) == 3 else 275 if len(lines) == 2 else 330
-    for item in lines:
-        draw.text((65, y), item, font=font, fill=(255, 255, 255),
-                  stroke_width=2, stroke_fill=(5, 8, 20))
-        y += 90
-    draw.rounded_rectangle((65, 625, 370, 675), radius=14, fill=(245, 176, 54))
-    draw.text((88, 637), "WHAT IF UNLOCKED", font=get_font(22), fill=(15, 18, 34))
-    image.save(output_path, "JPEG", quality=90, optimize=True)
-    print("Created YouTube thumbnail:", output_path)
-    return output_path
+def make_youtube_thumbnail(video_path, output_path):
+    """Use a clean frame from the actual Short; no title cards, banners, or channel labels."""
+    from PIL import ImageFilter
 
+    video_path = Path(video_path)
+    frame_path = Path(output_path).with_name(Path(output_path).stem + "_frame.jpg")
+    probe = subprocess.run(
+        ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+         "-of", "default=noprint_wrappers=1:nokey=1", str(video_path)],
+        capture_output=True, text=True, timeout=30
+    )
+    if probe.returncode:
+        raise RuntimeError("Could not read video duration for thumbnail frame.")
+    duration = max(0.1, float(probe.stdout.strip() or 0))
+    timestamp = min(max(duration * 0.38, 0.5), max(0.5, duration - 0.2))
+    extract = subprocess.run(
+        ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error", "-ss", f"{timestamp:.3f}",
+         "-i", str(video_path), "-frames:v", "1", "-q:v", "2", str(frame_path)],
+        capture_output=True, text=True, timeout=45
+    )
+    if extract.returncode or not frame_path.exists():
+        raise RuntimeError("Could not extract a representative frame from the Short.")
+    try:
+        with Image.open(frame_path) as source:
+            frame = source.convert("RGB")
+        # Landscape thumbnail: blurred video frame fills the canvas, while the
+        # complete original vertical frame remains clearly visible in the middle.
+        background = frame.resize((1280, 720), Image.LANCZOS).filter(ImageFilter.GaussianBlur(28))
+        background = background.copy()
+        shade = Image.new("RGB", (1280, 720), (0, 0, 0))
+        background = Image.blend(background, shade, 0.22)
+        foreground = frame.copy()
+        foreground.thumbnail((405, 720), Image.LANCZOS)
+        x = (1280 - foreground.width) // 2
+        y = (720 - foreground.height) // 2
+        background.paste(foreground, (x, y))
+        background.save(output_path, "JPEG", quality=94, optimize=True)
+    finally:
+        frame_path.unlink(missing_ok=True)
+    print("Created clean video-frame thumbnail (no banners or added text):", output_path)
+    return output_path
 
 def upload_hashtags(title, extra=None):
     """Create a concise topic-specific hashtag string for the description."""
@@ -2532,7 +2535,7 @@ def main():
     if a.upload:
         print("3/3 preparing YouTube metadata and thumbnail...")
         thumbnail = OUT / f"{slug}_thumbnail.jpg"
-        make_youtube_thumbnail(todo["title"], thumbnail)
+        make_youtube_thumbnail(mp4, thumbnail)
         description = (todo["script"] + "\n\nExplore more science-based What If stories on What If Unlocked.\n\n"
                        + upload_hashtags(todo["title"]) + "\n\n" + "\n".join(CREDITS))
         tags = list(dict.fromkeys(["shorts", "what if", "what if unlocked", "science"] +
