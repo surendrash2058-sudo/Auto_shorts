@@ -1204,7 +1204,7 @@ def make_bg_func(scene_imgs, scene_texts, total, scene_anims=None, words=None, c
             # visual moment. A long visual moment stays longer; a short reveal stays brief.
             cumulative_words = 0
             for i in range(len(scene_texts)):
-                cumulative_words += max(1, len(re.findall(r"\S+", str(scene_texts[i]))))
+                cumulative_words += max(1, len(_visual_tokens(scene_texts[i])))
                 last_index = min(cumulative_words - 1, len(words) - 1)
                 bounds.append(min(total, words[last_index][1] + words[last_index][2]))
         else:
@@ -2232,10 +2232,18 @@ def fetch_scene_videos(scenes, plan, slug):
 def render_with_scene_videos(title, words, mp3_path, mp4_path, clips, scene_texts, scene_imgs=None):
     """Build a scene-matched video reel, then use the stable caption renderer."""
     total = words[-1][1] + words[-1][2] + 0.8
-    weights = [max(len(t.split()), 1) for t in scene_texts]
-    transition = 0.35
-    timeline_total = total + transition * max(0, len(scene_texts) - 1)
-    durations = [timeline_total * w / sum(weights) for w in weights]
+    # Align every visual cut to actual TTS word-boundary timestamps.
+    cumulative_words = 0
+    boundaries = []
+    for scene in scene_texts:
+        cumulative_words += max(1, len(_visual_tokens(scene)))
+        last_index = min(cumulative_words - 1, len(words) - 1)
+        boundaries.append(min(total, words[last_index][1] + words[last_index][2]))
+    starts = [0.0] + boundaries[:-1]
+    durations = [max(0.08, end - start) for start, end in zip(starts, boundaries)]
+    if len(durations) != len(scene_texts) or not durations:
+        raise RuntimeError("Could not align visual moments to narration timestamps.")
+    transition = 0.18
     if not any(clips):
         return False
 
@@ -2373,15 +2381,15 @@ def main():
     if mode in ("auto", "images", "cinematic"):
         print("Preparing photorealistic scene backgrounds...")
         scene_imgs = fetch_scene_visuals(scene_contexts, plan, slug)
-        # Never let missing scene assets become blank gradient frames in a finished Short.
-        # A partially generated storyboard is not safe to render or upload.
-        if scene_imgs is not None:
-            missing_visuals = [i + 1 for i, image in enumerate(scene_imgs) if image is None]
-            if missing_visuals:
-                raise RuntimeError(
-                    "Visual quality gate blocked this Short: no valid matching image for storyboard "
-                    f"moment(s) {missing_visuals}. Refusing to render or upload blank/unrelated scenes."
-                )
+        # Never allow a failed image provider to fall through to generic animation.
+        if scene_imgs is None:
+            raise RuntimeError("Visual quality gate blocked this Short: no scene images were generated.")
+        missing_visuals = [i + 1 for i, image in enumerate(scene_imgs) if image is None]
+        if len(scene_imgs) != len(scene_texts) or missing_visuals:
+            raise RuntimeError(
+                "Visual quality gate blocked this Short: missing matching image(s) for storyboard "
+                f"moment(s) {missing_visuals or [i + 1 for i in range(len(scene_texts)) if i >= len(scene_imgs)]}."
+            )
     if not scene_imgs and not scene_videos and mode in ("auto", "stock"):
         clip = fetch_clip(kw, OUT / f"{slug}_bg.mp4")
     if not clip and mode in ("3d", "anim", "auto", "images"):
