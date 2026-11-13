@@ -1331,8 +1331,6 @@ def generate_scene_sound_effects(scene_texts, words, output_path):
             sample = (0.42 * noise + 0.32 * sweep + (0.30 * low if impact else 0.0))
             audio[begin + j] += sample * envelope * 0.10
 
-    for scene in scene_texts[1:]:
-        cumulative += max(1, len(_visual_tokens(scene_texts[len([x for x in scene_texts[:scene_texts.index(scene)]])])))
     # Use the same word-count alignment as the visual storyboard.
     cumulative = 0
     for scene in scene_texts[:-1]:
