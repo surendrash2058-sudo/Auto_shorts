@@ -46,7 +46,12 @@ jobs:
           PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
           PRIVACY: private
           VISUALS: cinematic
-        run: python auto_shorts.py --auto
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            python auto_shorts.py --next
+          else
+            python auto_shorts.py --auto
+          fi
 
       - name: Persist completed topic history
         if: success()
