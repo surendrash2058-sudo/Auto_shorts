@@ -2443,10 +2443,14 @@ def main():
     ap.add_argument("--privacy", default="private", choices=["private", "unlisted", "public"])
     ap.add_argument("--list", action="store_true")
     ap.add_argument("--auto", action="store_true", help="refill topics + make + upload")
+    ap.add_argument("--next", action="store_true", help="make and privately upload the next queued topic without trend discovery")
     a = ap.parse_args()
     if a.auto:
         a.upload = True
         a.privacy = os.environ.get("PRIVACY", a.privacy)
+    if a.next:
+        a.upload = True
+        a.privacy = "private"
 
     topics = json.loads(TOPICS.read_text(encoding="utf-8"))
     todo = None
