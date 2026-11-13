@@ -34,7 +34,7 @@ TOPICS = HERE / "topics.json"
 OUT = HERE / "output"
 IMAGES = HERE / "images"          # optional: put your own pictures here
 W, H, FPS = 1080, 1920, 30
-VOICE = "en-US-AndrewNeural"      # natural-sounding male English voice
+VOICE = "en-US-ChristopherNeural"  # conversational American male voice
 
 FONT_CANDIDATES = [
     "C:/Windows/Fonts/arialbd.ttf",
@@ -59,13 +59,13 @@ async def make_voice(text, mp3_path):
     """Generate speech with retries and alternate Microsoft Edge voices."""
     import edge_tts
 
-    voices = [VOICE, "en-GB-RyanNeural", "en-US-GuyNeural"]
+    voices = [VOICE, "en-US-BrianNeural", "en-US-AndrewNeural", "en-US-GuyNeural"]
     last_error = None
     for attempt, voice in enumerate(voices, start=1):
         words = []
         try:
             try:
-                comm = edge_tts.Communicate(text, voice, rate="-7%", pitch="-2Hz", volume="+0%", boundary="WordBoundary")
+                comm = edge_tts.Communicate(text, voice, rate="+0%", pitch="+0Hz", volume="+0%", boundary="WordBoundary")
             except TypeError:                  # older edge-tts versions
                 comm = edge_tts.Communicate(text, voice)
             with open(mp3_path, "wb") as audio_file:
@@ -1300,12 +1300,75 @@ def render(title, words, mp3_path, mp4_path, clip=None, scene_imgs=None, scene_t
 
 # ---------- 3d. cinematic audio bed ----------
 
-def mix_background_music(video_path):
-    """Mix optional licensed music and a short intro impact under narration."""
+def generate_scene_sound_effects(scene_texts, words, output_path):
+    """Create subtle, royalty-free cinematic transition sounds locally (no API/key)."""
+    import math
+    import random
+    import struct
+    import wave
+
+    sample_rate = 22050
+    total = words[-1][1] + words[-1][2] + 0.8
+    frames = int(total * sample_rate)
+    audio = [0.0] * frames
+    cumulative = 0
+    rng = random.Random(2407)
+
+    def add_swoosh(start, strength=1.0, impact=False):
+        duration = 0.52 if not impact else 0.38
+        begin = max(0, int(start * sample_rate))
+        count = min(int(duration * sample_rate), frames - begin)
+        if count <= 0:
+            return
+        phase = rng.random() * math.tau
+        for j in range(count):
+            t = j / sample_rate
+            p = j / max(1, count - 1)
+            envelope = (math.sin(math.pi * p) ** 1.6) * strength
+            noise = rng.uniform(-1.0, 1.0)
+            sweep = math.sin(math.tau * (105 + 260 * p) * t + phase)
+            low = math.sin(math.tau * (58 - 22 * p) * t + phase * 0.4)
+            sample = (0.42 * noise + 0.32 * sweep + (0.30 * low if impact else 0.0))
+            audio[begin + j] += sample * envelope * 0.10
+
+    for scene in scene_texts[1:]:
+        cumulative += max(1, len(_visual_tokens(scene_texts[len([x for x in scene_texts[:scene_texts.index(scene)]])])))
+    # Use the same word-count alignment as the visual storyboard.
+    cumulative = 0
+    for scene in scene_texts[:-1]:
+        cumulative += max(1, len(_visual_tokens(scene)))
+        word_index = min(cumulative - 1, len(words) - 1)
+        transition_time = words[word_index][1] + words[word_index][2]
+        add_swoosh(max(0.0, transition_time - 0.16), 0.75, False)
+
+    # A few restrained low impacts for genuinely dramatic narration beats.
+    for i, scene in enumerate(scene_texts):
+        lower = scene.lower()
+        if any(term in lower for term in ("explode", "collision", "crash", "collapse", "vanish", "impact", "shockwave")):
+            cumulative = sum(max(1, len(_visual_tokens(x))) for x in scene_texts[:i])
+            word_index = min(cumulative, len(words) - 1)
+            add_swoosh(max(0.0, words[word_index][1]), 0.9, True)
+
+    with wave.open(str(output_path), "wb") as wav:
+        wav.setnchannels(2)
+        wav.setsampwidth(2)
+        wav.setframerate(sample_rate)
+        for sample in audio:
+            value = max(-1.0, min(1.0, sample))
+            packed = struct.pack("<hh", int(value * 32767), int(value * 32767))
+            wav.writeframesraw(packed)
+
+
+def mix_background_music(video_path, scene_texts=None, words=None):
+    """Mix quiet scene-aware SFX and optional licensed music below clear narration."""
     music = HERE / "assets" / "background_music.mp3"
     impact = HERE / "assets" / "intro_impact.wav"
-    if not music.exists() and not impact.exists():
-        print("No optional soundtrack/SFX assets found; keeping clean narration-only audio.")
+    generated_sfx = video_path.with_name(video_path.stem + "_scene_sfx.wav")
+    if scene_texts and words:
+        generate_scene_sound_effects(scene_texts, words, generated_sfx)
+
+    if not music.exists() and not impact.exists() and not generated_sfx.exists():
+        print("No soundtrack/SFX assets found; keeping clean narration-only audio.")
         return
 
     cmd = ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error", "-i", str(video_path)]
@@ -1314,28 +1377,36 @@ def mix_background_music(video_path):
     input_index = 1
     if music.exists():
         cmd += ["-stream_loop", "-1", "-i", str(music)]
-        filters.append(f"[{input_index}:a]volume=0.085,afade=t=in:st=0:d=1.2[music]")
+        filters.append(f"[{input_index}:a]volume=0.065,afade=t=in:st=0:d=1.5[music]")
         labels.append("[music]")
         input_index += 1
     if impact.exists():
         cmd += ["-i", str(impact)]
-        filters.append(f"[{input_index}:a]atrim=duration=1.5,volume=0.20,afade=t=out:st=0.9:d=0.5,adelay=0|0[sfx]")
-        labels.append("[sfx]")
+        filters.append(f"[{input_index}:a]atrim=duration=1.5,volume=0.12,afade=t=out:st=0.9:d=0.5,adelay=0|0[impact]")
+        labels.append("[impact]")
+        input_index += 1
+    if generated_sfx.exists():
+        cmd += ["-i", str(generated_sfx)]
+        filters.append(f"[{input_index}:a]volume=0.24,afade=t=out:st=0:d=0.15[scene_sfx]")
+        labels.append("[scene_sfx]")
 
     filters.append("".join(labels) +
                    f"amix=inputs={len(labels)}:duration=first:dropout_transition=2,"
-                   "alimiter=limit=0.95[aout]")
+                   "alimiter=limit=0.92[aout]")
     mixed = video_path.with_name(video_path.stem + "_mixed.mp4")
-    cmd += [
-        "-filter_complex", ";".join(filters), "-map", "0:v", "-map", "[aout]",
-        "-c:v", "copy", "-c:a", "aac", "-b:a", "192k", "-shortest", str(mixed)
-    ]
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
-    if result.returncode or not mixed.exists() or mixed.stat().st_size < 100_000:
-        mixed.unlink(missing_ok=True)
-        raise RuntimeError("Cinematic audio mix failed: " + (result.stderr or "")[-1600:])
-    os.replace(mixed, video_path)
-    print("Optional cinematic music/SFX mixed under narration.")
+    try:
+        cmd += [
+            "-filter_complex", ";".join(filters), "-map", "0:v", "-map", "[aout]",
+            "-c:v", "copy", "-c:a", "aac", "-b:a", "192k", "-shortest", str(mixed)
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+        if result.returncode or not mixed.exists() or mixed.stat().st_size < 100_000:
+            mixed.unlink(missing_ok=True)
+            raise RuntimeError("Cinematic audio mix failed: " + (result.stderr or "")[-1600:])
+        os.replace(mixed, video_path)
+        print("Natural American narration mixed with subtle scene-timed cinematic sound effects.")
+    finally:
+        generated_sfx.unlink(missing_ok=True)
 
 
 # ---------- 4. upload ----------
@@ -2453,7 +2524,7 @@ def main():
             render(todo["title"], words, mp3, mp4, clip, scene_imgs, scene_texts, scene_anims, character_mode=False)
     else:
         render(todo["title"], words, mp3, mp4, clip, scene_imgs, scene_texts, scene_anims, character_mode=False)
-    mix_background_music(mp4)
+    mix_background_music(mp4, scene_texts, words)
     print("Video ready:", mp4)
     validate_video(mp4)
 
