@@ -1388,7 +1388,7 @@ def mix_background_music(video_path, scene_texts=None, words=None):
         input_index += 1
     if generated_sfx.exists():
         cmd += ["-i", str(generated_sfx)]
-        filters.append(f"[{input_index}:a]volume=0.24,afade=t=out:st=0:d=0.15[scene_sfx]")
+        filters.append(f"[{input_index}:a]volume=0.24[scene_sfx]")
         labels.append("[scene_sfx]")
 
     filters.append("".join(labels) +
