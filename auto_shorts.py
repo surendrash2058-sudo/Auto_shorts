@@ -1838,11 +1838,25 @@ photorealistic cinematic illustrating continuity anchor narration moment scene s
 realistic live action movie still showing""".split())
 
 
-def scene_search_query(text, n=6):
-    """Extract searchable subjects/actions, not storyboard metadata or generic style words."""
+def scene_description(text):
+    """Return the actual narrated action, excluding storyboard labels and continuity metadata."""
     value = str(text or "")
     narration = re.search(r"Exact narration:\\s*(.*?)(?:\\. Visual moment:|$)", value, re.I | re.S)
     visual = re.search(r"Visual moment:\\s*(.*?)(?:\\. Continuity anchor:|$)", value, re.I | re.S)
+    if narration or visual:
+        parts = []
+        if visual:
+            parts.append(visual.group(1).strip())
+        if narration:
+            parts.append("Narration context: " + narration.group(1).strip())
+        return ". ".join(parts)
+    return value.strip()
+
+def scene_search_query(text, n=6):
+    """Extract searchable subjects/actions, not storyboard metadata or generic style words."""
+    value = str(text or "")
+    narration = re.search(r"Exact narration:\s*(.*?)(?:\. Visual moment:|$)", value, re.I | re.S)
+    visual = re.search(r"Visual moment:\s*(.*?)(?:\. Continuity anchor:|$)", value, re.I | re.S)
     if narration or visual:
         value = " ".join(x.group(1) for x in (visual, narration) if x)
     value = re.sub(r"(?i)photorealistic cinematic visual illustrating:?|continuity anchor:?|exact narration:?|visual moment:?", " ", value)
@@ -1878,7 +1892,7 @@ def cat_query(scene_text, title=""):
 def plan_scenes(texts, title):
     """Create photorealistic images for meaningful moments with continuity anchors."""
     plan = [{"query": scene_search_query(t, n=6) or t[:90], "image_prompt":
-             ("Photorealistic cinematic movie still showing this exact scene: " + str(t)[:900] +
+             ("Photorealistic cinematic movie still showing this exact scene: " + scene_description(t)[:900] +
               ". Real-world details, believable scale and materials, natural cinematic lighting, " +
               "atmospheric depth, vertical portrait framing, no text, logos, illustration, or cartoon.")}
             for t in texts]
@@ -2101,7 +2115,7 @@ def fetch_scene_visuals(scenes, plan, slug):
         item = plan[i] if i < len(plan) else {}
         query = str(item.get("query") or scene_search_query(scene, n=6) or scene[:90])
         image_prompt = str(item.get("image_prompt") or (
-            "Photorealistic cinematic movie still of this exact scene: " + str(scene)[:900] +
+            "Photorealistic cinematic movie still of this exact scene: " + scene_description(scene)[:900] +
             ". Realistic materials, believable scale and physics, dramatic natural lighting, "
             "vertical portrait composition, no text, no logo, no cartoon, no illustration."))
         path = OUT / f"{slug}_scene{i}.jpg"
