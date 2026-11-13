@@ -1833,13 +1833,32 @@ STOP = set("""about after again also and any are because been before being betwe
 doing down during each even every first from had has have having here how into its just keep like make more most
 much must now off once only other our out over own same she should some such than that the their them then there
 these they this those through too under until very was were what when where which while who will with would you your
-one two three four five six seven eight nine ten would still exact spoken words full visual context""".split())
+one two three four five six seven eight nine ten would still exact spoken words full visual context
+photorealistic cinematic illustrating continuity anchor narration moment scene story same connected shot
+realistic live action movie still showing""".split())
+
+
+def scene_search_query(text, n=6):
+    """Extract searchable subjects/actions, not storyboard metadata or generic style words."""
+    value = str(text or "")
+    narration = re.search(r"Exact narration:\\s*(.*?)(?:\\. Visual moment:|$)", value, re.I | re.S)
+    visual = re.search(r"Visual moment:\\s*(.*?)(?:\\. Continuity anchor:|$)", value, re.I | re.S)
+    if narration or visual:
+        value = " ".join(x.group(1) for x in (visual, narration) if x)
+    value = re.sub(r"(?i)photorealistic cinematic visual illustrating:?|continuity anchor:?|exact narration:?|visual moment:?", " ", value)
+    words = [w for w in re.findall(r"[a-zA-Z]+", value.lower()) if w not in STOP and len(w) > 3]
+    result = []
+    for word in words:
+        if word not in result:
+            result.append(word)
+        if len(result) >= n:
+            break
+    return " ".join(result)
 
 
 def simple_query(text, n=3):
-    """Offline fallback: pick the longest meaningful words of a scene as a photo search."""
-    words = [w for w in re.findall(r"[a-zA-Z]+", text.lower()) if w not in STOP and len(w) > 3]
-    return " ".join(sorted(set(words), key=lambda w: -len(w))[:n])
+    """Backward-compatible semantic query builder."""
+    return scene_search_query(text, n=n)
 
 
 CAT_QUERY = {"sun": "sun solar flare", "earth": "planet earth from space", "moon": "moon surface",
@@ -1858,7 +1877,7 @@ def cat_query(scene_text, title=""):
 # ---------- scene planning (Gemini) + drawn illustrations ----------
 def plan_scenes(texts, title):
     """Create photorealistic images for meaningful moments with continuity anchors."""
-    plan = [{"query": simple_query(t, n=5) or t[:90], "image_prompt":
+    plan = [{"query": scene_search_query(t, n=6) or t[:90], "image_prompt":
              ("Photorealistic cinematic movie still showing this exact scene: " + str(t)[:900] +
               ". Real-world details, believable scale and materials, natural cinematic lighting, " +
               "atmospheric depth, vertical portrait framing, no text, logos, illustration, or cartoon.")}
@@ -2080,7 +2099,7 @@ def fetch_scene_visuals(scenes, plan, slug):
     print("Image provider:", "Cloudflare FLUX.1 Schnell" if cloudflare_ready else "Pollinations backup (Cloudflare secrets missing)")
     for i, scene in enumerate(scenes):
         item = plan[i] if i < len(plan) else {}
-        query = str(item.get("query") or simple_query(scene, n=5) or scene[:90])
+        query = str(item.get("query") or scene_search_query(scene, n=6) or scene[:90])
         image_prompt = str(item.get("image_prompt") or (
             "Photorealistic cinematic movie still of this exact scene: " + str(scene)[:900] +
             ". Realistic materials, believable scale and physics, dramatic natural lighting, "
@@ -2113,6 +2132,18 @@ def fetch_scene_visuals(scenes, plan, slug):
                 CREDITS.append("Images: NASA Image and Video Library (images.nasa.gov)")
         if img is not None:
             fingerprint = image_fingerprint(img)
+            if fingerprint in used_visuals and source == "Pixabay photo":
+                # Try alternate Pixabay results for this same scene before failing it.
+                for alternate in range(1, 7):
+                    alt_path = OUT / f"{slug}_scene{i}_alt{alternate}.jpg"
+                    if fetch_pixabay_photo(query, alt_path, i + alternate):
+                        candidate = prep_photo(alt_path, 0.9)
+                        alt_fingerprint = image_fingerprint(candidate)
+                        if alt_fingerprint not in used_visuals:
+                            img, fingerprint = candidate, alt_fingerprint
+                            print(f"   scene {i + 1}: selected alternate Pixabay result {alternate + 1}")
+                            break
+                    alt_path.unlink(missing_ok=True)
             if fingerprint in used_visuals:
                 print(f"   duplicate image rejected for scene {i + 1}; not reusing it")
                 img, source = None, None
