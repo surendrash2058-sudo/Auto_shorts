@@ -13,7 +13,7 @@ Cinematic, science-based What-If videos for the What If Unlocked YouTube channel
 - `.github/workflows/daily.yml`: scheduled Short generation.
 - `.github/workflows/long-form.yml`: scheduled long-form documentary generation.
 
-Both workflows set YouTube visibility to **private**. Do not change this without explicit human approval.
+Both workflows request YouTube visibility **public** for future uploads. This does not change visibility of videos already uploaded.
 
 ## Required GitHub Actions secrets
 - `YOUTUBE_API_KEY`
@@ -33,4 +33,4 @@ No OpenAI or Pexels API key is required.
 3. Authenticate YouTube locally using `youtube_auth.py`; keep OAuth files private.
 4. Run `python auto_shorts.py --auto` for a Short or `python long_video.py` for a long video.
 
-Generated videos remain private by default. Review them in YouTube Studio before deciding whether to publish.
+Direct local runs default to private unless an explicit visibility setting is supplied; GitHub Actions workflows request public for future uploads.
