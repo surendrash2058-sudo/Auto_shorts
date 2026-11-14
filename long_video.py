@@ -490,7 +490,7 @@ def main():
     render_long_video(item["title"], words, audio, video, clips, scenes, images)
     validate_long_video(video)
 
-    print("4/4 Uploading as PRIVATE for your review...")
+    print("4/4 Uploading as PUBLIC...")
     thumbnail = OUT / f"{slug}_thumbnail.jpg"
     shorts.make_youtube_thumbnail(item["title"], thumbnail)
     hashtags = shorts.upload_hashtags(item["title"], ["Documentary"])
@@ -501,10 +501,10 @@ def main():
         ["what if", "science", "space", "documentary", "what if unlocked"] +
         [str(x)[:30] for x in item.get("tags", []) if str(x).strip()]
     ))[:15]
-    privacy = os.environ.get("PRIVACY", "private").strip().lower()
-    if privacy != "private":
-        raise RuntimeError("Safety lock: long-form videos must be uploaded as PRIVATE.")
-    video_id = shorts.upload(video, item["title"], description, tags, "private", thumbnail_path=thumbnail)
+    privacy = os.environ.get("PRIVACY", "public").strip().lower()
+    if privacy != "public":
+        raise RuntimeError("Safety lock: long-form videos must be uploaded as PUBLIC.")
+    video_id = shorts.upload(video, item["title"], description, tags, privacy, thumbnail_path=thumbnail)
     item["done"] = True
     item["video_id"] = video_id
     item["published_at"] = __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat()
