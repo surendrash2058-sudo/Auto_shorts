@@ -1897,7 +1897,7 @@ def image_fingerprint(image):
 
 
 
-def download(url, path, headers=None, timeout=150):
+def download(url, path, headers=None, timeout=45):
     req = urllib.request.Request(url, headers=headers or {"User-Agent": "auto-shorts"})
     with urllib.request.urlopen(req, timeout=timeout) as r, open(path, "wb") as f:
         f.write(r.read())
@@ -2082,14 +2082,16 @@ def fetch_cloudflare_image(prompt, path, seed):
     endpoint = ("https://api.cloudflare.com/client/v4/accounts/" +
                 urllib.parse.quote(account_id, safe="") +
                 "/ai/run/@cf/black-forest-labs/flux-1-schnell")
-    payload = json.dumps({"prompt": str(prompt)[:2048], "steps": 4, "seed": int(seed)}).encode("utf-8")
+    # Keep the request to the model's documented, stable inputs. Some
+    # Workers AI deployments reject the optional seed field with HTTP 400.
+    payload = json.dumps({"prompt": str(prompt)[:2048], "steps": 4}).encode("utf-8")
     req = urllib.request.Request(endpoint, data=payload, headers={
         "Authorization": "Bearer " + api_token, "Content-Type": "application/json",
         "User-Agent": "auto-shorts"}, method="POST")
     last_error = None
     for attempt in range(1, 3):
         try:
-            with urllib.request.urlopen(req, timeout=180) as response:
+            with urllib.request.urlopen(req, timeout=75) as response:
                 body = response.read()
                 content_type = response.headers.get("Content-Type", "").lower()
             if content_type.startswith("image/"):
@@ -2123,16 +2125,6 @@ def fetch_cloudflare_image(prompt, path, seed):
             if attempt < 2:
                 time.sleep(3 * attempt)
     return False, str(last_error)
-
-def fetch_pollinations(prompt, path, seed):
-    try:
-        url = ("https://image.pollinations.ai/prompt/" + urllib.parse.quote(prompt[:600]) +
-               f"?width=768&height=1344&model=flux&nologo=true&seed={seed}")
-        download(url, path)
-        return True, ""
-    except Exception as e:
-        return False, str(e)
-
 
 def fetch_pexels_photo(query, path, pick=0):
     key = os.environ.get("PEXELS_API_KEY")
@@ -2214,18 +2206,18 @@ def fetch_scene_visuals(scenes, plan, slug):
                 img, source = prep_photo(path, 0.92), "Cloudflare FLUX AI"
             else:
                 print(f"   Cloudflare failed for scene {i + 1}: {err[:180]}")
-        if img is None:
-            backup_prompt = ("Photorealistic live-action cinematic movie still, realistic materials, "
-                             "believable scale, natural lighting, vertical portrait. Exact scene: " +
-                             image_prompt[:1000] + ". No cartoon, illustration, text, or watermark.")
-            ok, err = fetch_pollinations(backup_prompt, path, i * 11 + 3)
-            if ok:
-                img, source = prep_photo(path, 0.92), "Pollinations AI backup"
-                time.sleep(3)
-            else:
-                print(f"   Pollinations backup failed for scene {i + 1}: {err[:120]}")
+        # Pollinations' legacy image.pollinations.ai endpoint now returns
+        # payment/auth errors for this unauthenticated workflow. Skip it and
+        # use scene-matched stock/NASA sources rather than wasting retries.
         if img is None and fetch_pixabay_photo(query, path, i):
             img, source = prep_photo(path, 0.9), "Pixabay photo"
+        if img is None:
+            # Gemini's short search query can occasionally be too narrow.
+            # Retry with a compact query derived directly from the narration.
+            broad_query = simple_query(scene, n=5)
+            if broad_query and broad_query.lower() != query.lower() and fetch_pixabay_photo(broad_query, path, i + 1):
+                img, source = prep_photo(path, 0.9), "Pixabay photo (alternate query)"
+                print(f"   scene {i + 1}: matched using alternate query: {broad_query}")
         if img is None and fetch_pexels_photo(query, path, i):
             img, source = prep_photo(path, 0.9), "Pexels photo"
         if img is None and fetch_nasa_photo(query, path, i):
