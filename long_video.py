@@ -343,7 +343,7 @@ def write_captions(words, path, words_per_line=5):
             lines.append((start, end, caption))
     with open(path, "w", encoding="utf-8-sig") as handle:
         for index, (start, end, caption) in enumerate(lines, 1):
-            handle.write(f"{index}\\n{srt_timestamp(start)} --> {srt_timestamp(end)}\\n{caption}\\n\\n")
+            handle.write(f"{index}\n{srt_timestamp(start)} --> {srt_timestamp(end)}\n{caption}\n\n")
     print(f"Created timed captions: {len(lines)} subtitle cues.")
     return path
 
